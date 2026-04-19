@@ -1,0 +1,38 @@
+# Virtual environment — never commit this
+venv/
+.venv/
+env/
+
+# Secrets — NEVER commit this
+.env
+
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# VS Code settings
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+logs/
+
+# Database files (if we ever use SQLite locally for testing)
+*.db
+*.sqlite3
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# n8n exports (we'll add these manually when needed)
+# n8n/workflows/*.json
