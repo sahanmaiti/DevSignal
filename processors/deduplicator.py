@@ -1,45 +1,81 @@
 # processors/deduplicator.py
 #
 # PURPOSE:
-#   Removes duplicate jobs from a list of scraped opportunities.
+#   Removes duplicate jobs from a scraped batch.
 #
-# PHASE 1 VERSION:
-#   In-memory only — deduplicates within a single scrape batch.
-#   If the same job appears on RemoteOK and HackerNews, one is removed.
+# PHASE 2 UPGRADE vs PHASE 1:
+#   Phase 1 — only deduplicated within the current batch (in-memory).
+#   Phase 2 — also checks PostgreSQL so jobs from previous runs are excluded.
 #
-# PHASE 2 UPGRADE:
-#   Will also check against the PostgreSQL database so the same job
-#   is never inserted twice across separate scrape runs.
+# HOW IT WORKS:
+#   1. Fetch all existing job_hash values from the DB in one query → a Python set
+#   2. Walk through the new batch, skipping any hash already in the set
+#   3. Also skip duplicates within the batch itself (same job on 2 sources)
+#
+# PLACEMENT: processors/deduplicator.py
 
-def deduplicate(jobs: list[dict]) -> list[dict]:
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from storage.db_client import db
+
+
+def deduplicate(new_jobs: list) -> list:
     """
-    Removes duplicate job listings from a list.
+    Filters a list of new jobs down to only genuinely unseen ones.
 
-    Uses the job_hash field (set by BaseScraper._generate_hash()) to
-    identify duplicates. Two jobs with the same hash are identical.
+    Args:
+        new_jobs: list of normalized job dicts from scrapers (all with job_hash set)
 
-    Returns the list with duplicates removed, preserving the first occurrence.
+    Returns:
+        Subset of new_jobs that don't exist in the database and
+        aren't duplicated within the batch itself.
     """
-    seen_hashes = set()    # A set is like a list but has O(1) lookup speed
+    if not new_jobs:
+        return []
+
+    print(f"\n[Deduplicator] Checking {len(new_jobs)} jobs against database...")
+
+    # One database query to get all existing hashes as a set
+    # This is far more efficient than calling hash_exists() once per job
+    try:
+        existing_hashes = db.get_all_hashes()
+        print(f"[Deduplicator] Found {len(existing_hashes)} existing jobs in database")
+    except Exception as e:
+        # If DB is unreachable, fall back to in-memory dedup only
+        print(f"[Deduplicator] WARNING: Could not reach database ({e})")
+        print(f"[Deduplicator] Falling back to in-memory deduplication only")
+        existing_hashes = set()
+
+    seen_in_batch = set()   # catches duplicates within this scrape batch
     unique_jobs = []
+    skipped_db = 0
+    skipped_batch = 0
 
-    for job in jobs:
-        hash_value = job.get("job_hash", "")
+    for job in new_jobs:
+        h = job.get("job_hash", "")
 
-        # If we've seen this hash before, it's a duplicate — skip it
-        if not hash_value or hash_value in seen_hashes:
+        # Skip jobs with no hash (shouldn't happen, but guard against it)
+        if not h:
             continue
 
-        # First time seeing this hash — keep it
-        seen_hashes.add(hash_value)
+        # Already in the database from a previous run?
+        if h in existing_hashes:
+            skipped_db += 1
+            continue
+
+        # Already seen in this batch (same job on multiple platforms)?
+        if h in seen_in_batch:
+            skipped_batch += 1
+            continue
+
+        # New and unique — keep it
         unique_jobs.append(job)
+        seen_in_batch.add(h)
 
-    removed_count = len(jobs) - len(unique_jobs)
-
-    if removed_count > 0:
-        print(f"[Deduplicator] Removed {removed_count} duplicate(s). "
-              f"{len(unique_jobs)} unique jobs remaining.")
-    else:
-        print(f"[Deduplicator] No duplicates found. {len(unique_jobs)} unique jobs.")
+    print(f"[Deduplicator] Skipped {skipped_db} already in database")
+    print(f"[Deduplicator] Skipped {skipped_batch} duplicates within batch")
+    print(f"[Deduplicator] Result: {len(unique_jobs)} genuinely new jobs")
 
     return unique_jobs

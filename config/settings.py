@@ -29,7 +29,7 @@ load_dotenv()
 # The default matches our docker-compose.yml setup.
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://radar:radar_pass@localhost:5432/ios_radar"
+    "postgresql://radar:radar_pass@localhost:5432/devsignal"
 )
 
 
