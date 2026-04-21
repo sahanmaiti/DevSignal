@@ -1,0 +1,132 @@
+# docker-compose.yml
+#
+# PURPOSE:
+#   Defines and runs two services as Docker containers:
+#     1. postgres  — the DevSignal database
+#     2. n8n       — the automation engine (used in Phase 7)
+#
+# USAGE:
+#   Start both services:     docker compose up -d
+#   Stop both services:      docker compose down
+#   Stop AND delete data:    docker compose down -v   ← WARNING: wipes database
+#   View live logs:          docker compose logs -f
+#   View one service logs:   docker compose logs -f postgres
+#   Check health:            docker compose ps
+#
+# PLACEMENT: project root — ~/projects/devsignal/docker-compose.yml
+
+services:
+
+  # ────────────────────────────────────────────────────────────────────────
+  # SERVICE 1: PostgreSQL 16
+  # The database that stores all discovered jobs, recruiter data, scores, etc.
+  # ────────────────────────────────────────────────────────────────────────
+  postgres:
+    # "postgres:16-alpine" means:
+    #   postgres = the official PostgreSQL Docker image
+    #   16       = version 16 (stable, widely used)
+    #   alpine   = built on Alpine Linux — a tiny 5MB base OS, loads fast,
+    #              runs great on Apple Silicon ARM chips
+    image: postgres:16-alpine
+
+    # A human-friendly name for the container (shows up in Docker Desktop)
+    container_name: devsignal_postgres
+
+    # If the container crashes or your Mac restarts, Docker auto-restarts it
+    # "unless-stopped" means: restart always, EXCEPT if you manually stopped it
+    restart: unless-stopped
+
+    # Environment variables passed into the container at startup.
+    # Postgres reads these to create the initial database and user.
+    environment:
+      POSTGRES_DB:       devsignal     # name of the database to create
+      POSTGRES_USER:     radar        # username your Python code logs in as
+      POSTGRES_PASSWORD: radar_pass    # password — change this if deploying publicly
+
+    # Port mapping: "HOST:CONTAINER"
+    # Left side (5432) = port on your Mac
+    # Right side (5432) = port inside the container
+    # This means: localhost:5432 on your Mac → Postgres inside the container
+    ports:
+      - "5433:5432"
+
+    # Volumes: persistent storage that survives container deletion
+    volumes:
+      # Named volume for actual database files — Docker manages this location
+      - postgres_data:/var/lib/postgresql/data
+
+      # Mount our schema file so Postgres runs it automatically on first start.
+      # Any .sql files in /docker-entrypoint-initdb.d/ run once on first boot.
+      # This creates our tables automatically — no manual setup needed.
+      - ./storage/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+
+    # Health check: Docker polls this command every 10 seconds.
+    # The container is marked "healthy" only when this succeeds.
+    # n8n waits for this before starting (see depends_on below).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar -d devsignal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ────────────────────────────────────────────────────────────────────────
+  # SERVICE 2: n8n workflow automation
+  # Not used until Phase 7, but we set it up now so it's ready.
+  # n8n will orchestrate running scrapers every 12 hours automatically.
+  # ────────────────────────────────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: devsignal_n8n
+    restart: unless-stopped
+
+    # Don't start n8n until Postgres is confirmed healthy.
+    # Without this, n8n might try to connect before Postgres is ready.
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    ports:
+      - "5678:5678"       # n8n web UI → open http://localhost:5678
+
+    environment:
+      # Tell n8n to store its own data (workflows, credentials) in our Postgres.
+      # Note: hostname is "postgres" — the service name above, not "localhost".
+      # Inside Docker's network, containers find each other by service name.
+      DB_TYPE:                    postgresdb
+      DB_POSTGRESDB_HOST:         postgres
+      DB_POSTGRESDB_PORT:         5432
+      DB_POSTGRESDB_DATABASE:     devsignal
+      DB_POSTGRESDB_USER:         radar
+      DB_POSTGRESDB_PASSWORD:     radar_pass
+
+      # Basic auth to protect the n8n UI
+      N8N_BASIC_AUTH_ACTIVE:      "true"
+      N8N_BASIC_AUTH_USER:        admin
+      N8N_BASIC_AUTH_PASSWORD:    devsignal2024
+
+      # Required for webhooks to work correctly
+      WEBHOOK_URL:                "http://localhost:5678"
+
+      # Timezone for cron triggers
+      GENERIC_TIMEZONE:           "Asia/Kolkata"
+
+    volumes:
+      # n8n's own config and workflow storage
+      - n8n_data:/home/node/.n8n
+
+      # Mount the entire project folder into the container at /app
+      # This lets n8n run your Python scripts with: Execute Command → python /app/run_scraper.py
+      - .:/app
+
+    working_dir: /app
+
+# ────────────────────────────────────────────────────────────────────────
+# NAMED VOLUMES
+# Docker manages these directories on your Mac.
+# They persist across container restarts and deletions.
+# To find where they live: docker volume inspect devsignal_postgres_data
+# ────────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:    # Stores all PostgreSQL data files
+  n8n_data:         # Stores n8n workflows and credentials
