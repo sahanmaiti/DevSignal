@@ -46,9 +46,9 @@ CREATE TABLE IF NOT EXISTS opportunities (
     job_hash            VARCHAR(32)     NOT NULL UNIQUE,
 
     -- ── Job details ───────────────────────────────────────────────────────
-    company             VARCHAR(200)    NOT NULL DEFAULT '',
-    role                VARCHAR(300)    NOT NULL DEFAULT '',
-    location            VARCHAR(200)    NOT NULL DEFAULT '',
+    company             TEXT            NOT NULL DEFAULT '',
+    role                TEXT            NOT NULL DEFAULT '',
+    location            TEXT            NOT NULL DEFAULT '',
 
     -- CHECK constraint enforces only these exact values are allowed
     remote              VARCHAR(10)     NOT NULL DEFAULT 'Unknown'
