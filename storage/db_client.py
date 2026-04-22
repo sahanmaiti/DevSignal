@@ -166,17 +166,17 @@ class DBClient:
         rows = []
         for j in jobs:
             rows.append((
-                j.get("job_source", ""),
-                j.get("apply_link", ""),
-                j.get("job_hash", ""),
-                j.get("company", ""),
-                j.get("role", ""),
-                j.get("location", ""),
-                j.get("remote", "Unknown"),
-                j.get("visa_sponsorship", "Unknown"),
-                j.get("experience_req", ""),
-                j.get("tech_stack", ""),
-                j.get("description_raw", ""),
+                j.get("job_source", "")[:50],
+                j.get("apply_link", ""),              # TEXT — no limit
+                j.get("job_hash", "")[:32],
+                j.get("company", "")[:200],
+                j.get("role", "")[:300],
+                j.get("location", "")[:200],
+                j.get("remote", "Unknown")[:10],
+                j.get("visa_sponsorship", "Unknown")[:10],
+                j.get("experience_req", "")[:100],
+                j.get("tech_stack", ""),               # TEXT — no limit
+                j.get("description_raw", ""),          # TEXT — no limit
             ))
 
         sql = """

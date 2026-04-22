@@ -99,7 +99,8 @@ VISA_POSITIVE_PHRASES = [
     "open to international",
     "global candidates",
     "relocation assistance",
-    "we sponsor",
+    "we offer visa",          
+    "we provide sponsorship",
 ]
 
 
