@@ -31,6 +31,7 @@ from processors.job_parser       import parse_jobs
 from processors.filter_engine    import filter_jobs
 from processors.deduplicator     import deduplicate
 from storage.db_client           import db
+from notifications.telegram_bot  import send_digest, send_run_summary, send_error_alert
 
 
 def print_line(char="─", width=62):
@@ -40,15 +41,15 @@ def print_line(char="─", width=62):
 def main():
     print()
     print_line("═")
-    print("  DevSignal — Scraper Pipeline  (Phase 3)")
+    print("  DevSignal — Scraper Pipeline  (Phase 4)")
     print_line("═")
 
-    # ── Log start ────────────────────────────────────────────────────────
-    run_id = db.start_scrape_run(triggered_by="manual")
-    errors = ""
+    run_id        = db.start_scrape_run(triggered_by="manual")
+    errors        = ""
     all_raw_jobs  = []
     filtered_jobs = []
     new_jobs      = []
+    inserted      = 0
 
     try:
         # ── Step 1: Run all scrapers ──────────────────────────────────────
@@ -81,7 +82,7 @@ def main():
         # ── Step 3: Filter ────────────────────────────────────────────────
         filtered_jobs = filter_jobs(parsed_jobs)
 
-        # ── Step 4: Deduplicate against database ──────────────────────────
+        # ── Step 4: Deduplicate ───────────────────────────────────────────
         new_jobs = deduplicate(filtered_jobs)
 
         # ── Step 5: Insert into PostgreSQL ────────────────────────────────
@@ -91,9 +92,14 @@ def main():
             print(f"[DB] Inserted {inserted} new jobs into PostgreSQL")
         else:
             print("[DB] No new jobs to insert.")
-            inserted = 0
 
-        # ── Step 6: Print results table ────────────────────────────────────
+        # ── Step 6: Send Telegram digest ──────────────────────────────────
+        print()
+        print("[Telegram] Sending digest...")
+        sent = send_digest(new_jobs if new_jobs else [])
+        print(f"[Telegram] Digest {'sent' if sent else 'skipped (not configured)'}")
+
+        # ── Step 7: Print results table ───────────────────────────────────
         print()
         print_line("═")
         print(f"  RESULTS: {len(new_jobs)} new jobs saved to DevSignal")
@@ -113,19 +119,29 @@ def main():
                 )
             print()
 
-        # ── Step 7: Show database totals ───────────────────────────────────
+        # ── Step 8: Database totals ───────────────────────────────────────
         stats = db.get_stats()
         print_line()
         print(f"  Database totals:")
         print(f"    Total stored:     {stats.get('total_jobs', 0)}")
-        print(f"    Unscored:         {stats.get('unscored_count', 0)}  ← ready for Phase 5 AI scoring")
+        print(f"    Unscored:         {stats.get('unscored_count', 0)}")
         print(f"    Remote jobs:      {stats.get('remote_count', 0)}")
         print(f"    Applied:          {stats.get('total_applied', 0)}")
         print_line()
 
+        # ── Step 9: Send run summary ──────────────────────────────────────
+        send_run_summary(
+            jobs_found=len(all_raw_jobs),
+            jobs_filtered=len(filtered_jobs),
+            jobs_new=len(new_jobs),
+            jobs_stored=inserted,
+            sources=source_counts,
+        )
+
     except Exception as e:
         errors = str(e)
         print(f"\n[ERROR] Pipeline failed: {e}")
+        send_error_alert(str(e))
         import traceback
         traceback.print_exc()
         raise
@@ -139,7 +155,7 @@ def main():
         )
 
     print()
-    print("  Phase 3 complete. Next: Phase 4 — Telegram notifications")
+    print("  Phase 4 complete. Next: Phase 5 — AI scoring with Claude")
     print()
     return new_jobs
 
