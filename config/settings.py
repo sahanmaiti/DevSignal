@@ -44,14 +44,15 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 
-# ─────────────────────────────────────────────────────────────
-# AI
-# ─────────────────────────────────────────────────────────────
+# ── AI (free via Groq) ────────────────────────────────────────────────────
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-# Anthropic Claude API key — used for scoring, classification, outreach
-CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
+# Model to use — llama-3.1-8b-instant is free, fast, great at JSON
+GROQ_MODEL   = "llama-3.1-8b-instant"
 
-
+# Scoring thresholds
+HIGH_SCORE_ALERT_THRESHOLD = 85   # send immediate Telegram alert above this
+DIGEST_MIN_SCORE           = 60   # only include in digest above this
 # ─────────────────────────────────────────────────────────────
 # ENRICHMENT APIs
 # ─────────────────────────────────────────────────────────────

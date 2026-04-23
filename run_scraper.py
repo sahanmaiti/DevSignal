@@ -32,6 +32,7 @@ from processors.filter_engine    import filter_jobs
 from processors.deduplicator     import deduplicate
 from storage.db_client           import db
 from notifications.telegram_bot  import send_digest, send_run_summary, send_error_alert
+from run_scorer import main as run_scorer
 
 
 def print_line(char="─", width=62):
@@ -93,13 +94,25 @@ def main():
         else:
             print("[DB] No new jobs to insert.")
 
-        # ── Step 6: Send Telegram digest ──────────────────────────────────
+        # ── Step 6: Score new jobs with AI ────────────────────────────────
+        if new_jobs:
+            print()
+            print_line()
+            print("  Running AI scorer on new jobs...")
+            print_line()
+            try:
+                run_scorer(limit=None)
+            except Exception as e:
+                print(f"[Scorer] Scoring failed (non-fatal): {e}")
+                # Pipeline continues even if scoring fails
+
+        # ── Step 7: Send Telegram digest ──────────────────────────────────
         print()
         print("[Telegram] Sending digest...")
         sent = send_digest(new_jobs if new_jobs else [])
         print(f"[Telegram] Digest {'sent' if sent else 'skipped (not configured)'}")
 
-        # ── Step 7: Print results table ───────────────────────────────────
+        # ── Step 8: Print results table ───────────────────────────────────
         print()
         print_line("═")
         print(f"  RESULTS: {len(new_jobs)} new jobs saved to DevSignal")
@@ -119,7 +132,7 @@ def main():
                 )
             print()
 
-        # ── Step 8: Database totals ───────────────────────────────────────
+        # ── Step 9: Database totals ───────────────────────────────────────
         stats = db.get_stats()
         print_line()
         print(f"  Database totals:")
@@ -129,7 +142,7 @@ def main():
         print(f"    Applied:          {stats.get('total_applied', 0)}")
         print_line()
 
-        # ── Step 9: Send run summary ──────────────────────────────────────
+        # ── Step 10: Send run summary ──────────────────────────────────────
         send_run_summary(
             jobs_found=len(all_raw_jobs),
             jobs_filtered=len(filtered_jobs),
