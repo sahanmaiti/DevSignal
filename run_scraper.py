@@ -168,7 +168,7 @@ def main():
         )
 
     print()
-    print("  Phase 4 complete. Next: Phase 5 — AI scoring with Claude")
+    print("  Completed")
     print()
     return new_jobs
 
