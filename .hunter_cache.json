@@ -1,0 +1,95 @@
+{
+  "stripe.com": {
+    "pattern": "{first}{last}@stripe.com",
+    "emails": [
+      {
+        "email": "jayjeffords@stripe.com",
+        "first_name": "Jay",
+        "last_name": "Jeffords",
+        "position": "Finance Director",
+        "linkedin": "https://www.linkedin.com/in/jay-jeffords-60b3a822",
+        "confidence": 94
+      },
+      {
+        "email": "srinivas@stripe.com",
+        "first_name": "Srinivas",
+        "last_name": "Raju",
+        "position": "Financial Crime Manager",
+        "linkedin": "https://www.linkedin.com/in/srinivasraju2608",
+        "confidence": 94
+      },
+      {
+        "email": "mathieu@stripe.com",
+        "first_name": "Brian",
+        "last_name": "Dennehy",
+        "position": "Director of Engineering",
+        "linkedin": "https://www.linkedin.com/in/brian-dennehy-18a2932",
+        "confidence": 94
+      },
+      {
+        "email": "vanessa@stripe.com",
+        "first_name": "Vanessa",
+        "last_name": "Wolter",
+        "position": "Global Head of Lifecycle Management",
+        "linkedin": "https://www.linkedin.com/in/vpstark",
+        "confidence": 94
+      },
+      {
+        "email": "demetria@stripe.com",
+        "first_name": "Demetria",
+        "last_name": "Jones",
+        "position": "Administrative Assistant",
+        "linkedin": "https://www.linkedin.com/in/demetria-jones-bb77861b5",
+        "confidence": 94
+      },
+      {
+        "email": "seancollins@stripe.com",
+        "first_name": "Sean",
+        "last_name": "Collins",
+        "position": "Senior Recruiter",
+        "linkedin": "https://www.linkedin.com/in/-sean-collins",
+        "confidence": 93
+      },
+      {
+        "email": "briancurran@stripe.com",
+        "first_name": "Brian",
+        "last_name": "Curran",
+        "position": "Chief Risk Officer",
+        "linkedin": "https://www.linkedin.com/in/brian-curran-283a6880",
+        "confidence": 93
+      },
+      {
+        "email": "manpreet@stripe.com",
+        "first_name": "Manpreet",
+        "last_name": "Singh",
+        "position": "Director of Engineering",
+        "linkedin": "https://www.linkedin.com/in/manpreet-singh-434a104",
+        "confidence": 93
+      },
+      {
+        "email": "fishman@stripe.com",
+        "first_name": "Lepi",
+        "last_name": "Fishman",
+        "position": "Head of Product",
+        "linkedin": "https://www.linkedin.com/in/lepijha",
+        "confidence": 93
+      },
+      {
+        "email": "amishdesai@stripe.com",
+        "first_name": "Amish",
+        "last_name": "Desai",
+        "position": "Director of Technical Account Management",
+        "linkedin": "https://www.linkedin.com/in/amish-desai-7263121",
+        "confidence": 93
+      }
+    ],
+    "recruiter": {
+      "email": "seancollins@stripe.com",
+      "first_name": "Sean",
+      "last_name": "Collins",
+      "position": "Senior Recruiter",
+      "linkedin": "https://www.linkedin.com/in/-sean-collins",
+      "confidence": 93
+    }
+  }
+}

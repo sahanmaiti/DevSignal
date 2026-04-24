@@ -183,6 +183,15 @@ class TelegramBot:
             if location and location.lower() not in ["remote", "see post", ""]:
                 job_block += f" · {location}"
             job_block += f"\n   {score_text}\n"
+            
+            # Recruiter info
+            recruiter_name = job.get("recruiter_name", "")
+            linkedin_url   = job.get("linkedin_profile", "")
+
+            if recruiter_name:
+                job_block += f"\n   Contact: {self._escape_html(recruiter_name[:30])}"
+                if linkedin_url:
+                    job_block += f' — <a href="{linkedin_url}">LinkedIn</a>'
 
             # Apply link
             if link:

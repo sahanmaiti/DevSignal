@@ -23,6 +23,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from run_enricher                import main as run_enricher
+from config.settings             import ENRICHMENT_MIN_SCORE
 from scrapers.remoteok_scraper   import RemoteOKScraper
 from scrapers.hackernews_scraper import HackerNewsScraper
 from scrapers.yc_scraper         import YCScraper
@@ -32,7 +34,7 @@ from processors.filter_engine    import filter_jobs
 from processors.deduplicator     import deduplicate
 from storage.db_client           import db
 from notifications.telegram_bot  import send_digest, send_run_summary, send_error_alert
-from run_scorer import main as run_scorer
+from run_scorer                  import main as run_scorer
 
 
 def print_line(char="─", width=62):
@@ -105,6 +107,17 @@ def main():
             except Exception as e:
                 print(f"[Scorer] Scoring failed (non-fatal): {e}")
                 # Pipeline continues even if scoring fails
+
+        # ── Step 7: Enrich top jobs with recruiter data ───────────────────
+        if new_jobs:
+            print()
+            print_line()
+            print("  Running recruiter enrichment on new jobs...")
+            print_line()
+            try:
+                run_enricher(min_score=ENRICHMENT_MIN_SCORE, limit=None)
+            except Exception as e:
+                print(f"[Enricher] Enrichment failed (non-fatal): {e}")
 
         # ── Step 7: Send Telegram digest ──────────────────────────────────
         print()

@@ -35,4 +35,4 @@ build/
 *.egg-info/
 
 # n8n exports (we'll add these manually when needed)
-# n8n/workflows/*.json
+# n8n/workflows/*.json.hunter_cache.json

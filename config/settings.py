@@ -63,6 +63,12 @@ HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")
 # Apollo.io — finds recruiter and hiring manager contact info
 APOLLO_API_KEY = os.getenv("APOLLO_API_KEY", "")
 
+# Serper.dev for Google search (free tier: 100 searches/month)
+# Get free key at serper.dev — used for LinkedIn profile finding
+SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
+# Only enrich jobs scoring at or above this threshold
+# (conserves Hunter.io's 25/month free quota)
+ENRICHMENT_MIN_SCORE = 70
 
 # ─────────────────────────────────────────────────────────────
 # SCRAPER SETTINGS
