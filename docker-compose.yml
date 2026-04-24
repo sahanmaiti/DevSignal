@@ -112,8 +112,8 @@ services:
       GENERIC_TIMEZONE:           "Asia/Kolkata"
 
       # These make your secrets available inside n8n workflows as $env.KEY
-      TELEGRAM_BOT_TOKEN:         "8660673850:AAHXAkCvRsCiq7yzg8mrkfogEqt2MEt_Jsg"
-      TELEGRAM_CHAT_ID:           "7095734916"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
 
 
     volumes:
