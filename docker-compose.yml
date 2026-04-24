@@ -111,6 +111,11 @@ services:
       # Timezone for cron triggers
       GENERIC_TIMEZONE:           "Asia/Kolkata"
 
+      # These make your secrets available inside n8n workflows as $env.KEY
+      TELEGRAM_BOT_TOKEN:         "8660673850:AAHXAkCvRsCiq7yzg8mrkfogEqt2MEt_Jsg"
+      TELEGRAM_CHAT_ID:           "7095734916"
+
+
     volumes:
       # n8n's own config and workflow storage
       - n8n_data:/home/node/.n8n
