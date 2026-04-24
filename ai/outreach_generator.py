@@ -28,7 +28,7 @@ from config.settings import GROQ_API_KEY, GROQ_MODEL
 OUTREACH_PROMPT = """Write a short LinkedIn connection request message (under 280 characters) from a CS student seeking an iOS internship.
 
 About the student:
-- Student developer with SwiftUI project experience.
+- CS student, 0 years experience
 - Skills: Swift, SwiftUI, REST APIs
 - Built: expense tracker app, weather app (both SwiftUI)
 - Seeking iOS internship, open to remote
@@ -38,20 +38,17 @@ About the opportunity:
 - Role: {role}
 - iOS Product: {ios_product_desc}
 - Remote: {remote}
+- Recruiter name: {recruiter_name}
 
 Requirements:
-Requirements:
-- 220 to 270 characters
-- Natural and conversational
-- No resume summary
-- Mention one specific thing about the company/product
-- Mention SwiftUI experience briefly
-- End with "Would love to connect."
-- No greetings
-- No quotes
-Return only the message
+- If recruiter name is provided, start with "Hi [FirstName],"
+- Sound like a real human, not a template
+- Mention ONE specific thing about their iOS product or tech stack
+- End with a soft ask (not "Can I have a job?")
+- Under 280 characters total
+- No subject line unless it's a LinkedIn message
 
-Return ONLY the message text."""
+Return ONLY the message text, nothing else."""
 
 
 class OutreachGenerator:
@@ -85,6 +82,7 @@ class OutreachGenerator:
             ios_product_desc = ios_product_desc[:150] if ios_product_desc
                             else "their iOS application",
             remote           = job.get("remote", "Unknown"),
+            recruiter_name   = job.get("recruiter_name", "") or "Not known",
         )
 
         try:

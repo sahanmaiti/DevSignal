@@ -22,6 +22,7 @@
 import os
 import sys
 import json
+import re
 import time
 from datetime import datetime, timezone
 
@@ -144,26 +145,25 @@ class OpportunityScorer:
         Parses the AI's JSON score response.
         Handles code blocks and minor formatting variations.
         """
-        # Strip markdown code blocks
-        if "```" in raw:
-            parts = raw.split("```")
-            raw = parts[1] if len(parts) > 1 else raw
-            if raw.startswith("json\n"):
-                raw = raw[5:]
-        raw = raw.strip()
+        text = raw.strip()
+
+        # Strip markdown code fences — handles ```json, ```JSON, ``` etc.
+        # Remove opening fence
+        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.IGNORECASE)
+        # Remove closing fence
+        text = re.sub(r'\s*```\s*$', '', text)
+        text = text.strip()
 
         try:
-            data = json.loads(raw)
+            data = json.loads(text)
 
             score     = int(data.get("score", 0))
             breakdown = data.get("breakdown", {})
             summary   = str(data.get("summary", ""))[:300]
 
-            # Validate score is in range
+            # Clamp score to valid range
             score = max(0, min(100, score))
 
-            # Validate breakdown sums roughly match the score
-            # (small discrepancies are fine — the AI rounds)
             expected_keys = [
                 "remote_work", "visa_sponsorship", "swift_match",
                 "ios_product", "experience_level", "salary_mentioned",
@@ -172,11 +172,6 @@ class OpportunityScorer:
             clean_breakdown = {}
             for key in expected_keys:
                 clean_breakdown[key] = int(breakdown.get(key, 0))
-
-            calculated_score = sum(clean_breakdown.values())
-            if abs(score - calculated_score) > 5:
-                    score = calculated_score
-            score = max(0, min(100, score))       
 
             return {
                 "score":     score,
@@ -188,6 +183,7 @@ class OpportunityScorer:
             print(f"[Scorer] JSON parse error: {e}")
             print(f"[Scorer] Raw response was: {raw[:200]}")
             return self._fallback_score_from_raw(raw)
+        
 
     def _fallback_score(self, job: dict) -> dict:
         """
