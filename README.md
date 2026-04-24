@@ -2,12 +2,12 @@
 
 > AI-powered iOS internship radar — scrapes 4 job platforms, parses and filters
 > results intelligently, persists everything to PostgreSQL, scores every
-> opportunity with an 8-factor AI model, and fires personalized recruiter
-> outreach automatically.
+> opportunity with an 8-factor AI model, fires personalized recruiter
+> outreach automatically, and runs fully autonomously every 12 hours.
 
 ```
 pipeline:  scrape → parse → filter → deduplicate → store → score → enrich → notify → track
-progress:  ████████████████████░░░░  Phase 6 of 8 complete
+progress:  █████████████████████████░  Phase 7 of 8 complete
 ```
 
 ---
@@ -15,10 +15,10 @@ progress:  ████████████████████░░░
 ## What it does
 
 DevSignal runs a fully automated job discovery pipeline targeted at iOS internship
-roles. Every 12 hours (Phase 7), it pulls from four job platforms, extracts
-structured fields from raw description text, drops anything that doesn't match
-the target profile, deduplicates against the full history in PostgreSQL, and saves
-only genuinely new opportunities.
+roles. Every 12 hours, n8n wakes up and triggers the full pipeline — pulling from
+four job platforms, extracting structured fields from raw description text, dropping
+anything that doesn't match the target profile, deduplicating against the full history
+in PostgreSQL, and saving only genuinely new opportunities.
 
 Each new job is immediately scored 0–100 by an 8-factor AI model (free via Groq's
 Llama 3.1 API), with a per-factor breakdown explaining the score. Jobs above 65
@@ -29,8 +29,9 @@ High-scoring jobs then go through a 3-layer enrichment pass: domain extraction,
 Hunter.io email pattern lookup, and LinkedIn profile discovery via Google Search.
 When a recruiter name is found, the outreach message addresses them directly.
 
-Later phases add n8n automation and a Streamlit dashboard — but the full
-discovery-to-outreach pipeline is already production-grade.
+The entire pipeline runs without any manual intervention. n8n handles scheduling
+and error routing; a local FastAPI server handles execution. If anything fails,
+a Telegram alert fires immediately with the error details.
 
 ---
 
@@ -44,8 +45,8 @@ discovery-to-outreach pipeline is already production-grade.
 | 4 | Telegram notifications | ✅ Done |
 | 5 | AI scoring via Groq free API (8-factor model) | ✅ Done |
 | 6 | Recruiter enrichment · outreach message generation | ✅ Done |
-| 7 | n8n automation — runs every 12 hours | 🔲 Next |
-| 8 | Streamlit dashboard · portfolio polish | 🔲 |
+| 7 | n8n automation — runs every 12 hours | ✅ Done |
+| 8 | Streamlit dashboard · portfolio polish | 🔲 Next |
 
 ---
 
@@ -56,6 +57,8 @@ discovery-to-outreach pipeline is already production-grade.
 | Language | Python 3.12 |
 | Database | PostgreSQL 16 (Docker) |
 | Orchestration | n8n (Docker) |
+| Execution API | FastAPI + uvicorn |
+| Process manager | macOS launchd |
 | AI scoring | Groq API · Llama 3.1 8B (free tier) |
 | Email enrichment | Hunter.io (free tier — 25 req/month) |
 | LinkedIn finder | Serper.dev Google Search API (free tier) |
@@ -68,6 +71,24 @@ discovery-to-outreach pipeline is already production-grade.
 ## Architecture
 
 ```
+┌─────────────────────────────────────────────────────────────┐
+│                     AUTOMATION LAYER                        │
+│                                                             │
+│  n8n (Docker)  ←── Schedule Trigger (every 12 hours)        │
+│       │                                                     │
+│       │  POST /run-pipeline (host.docker.internal:8000)     │
+│       ▼                                                     │
+│  FastAPI (Mac) ←── api/pipeline_server.py                   │
+│       │             Protected by X-Api-Key header           │
+│       │             Managed by macOS launchd                │
+│       ▼                                                     │
+│  run_pipeline.sh ──── scrape → score → enrich               │
+│                                                             │
+│  n8n error branch:                                          │
+│    HTTP 500 → Parse Error → Telegram Error Alert            │
+└───────────┬─────────────────────────────────────────────────┘
+            │
+            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                        run_scraper.py                       │
 │                      pipeline entry point                   │
@@ -136,6 +157,7 @@ discovery-to-outreach pipeline is already production-grade.
 │                                                             │
 │  telegram_bot.py  — digest with scores + recruiter links    │
 │                     immediate alert for score >= 85         │
+│                     error alert if n8n pipeline fails       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -145,6 +167,18 @@ discovery-to-outreach pipeline is already production-grade.
 
 ```
 devsignal/
+│
+├── api/
+│   ├── __init__.py
+│   └── pipeline_server.py       # FastAPI server — /run-pipeline, /health, /status
+│                                #   called by n8n HTTP Request node
+│                                #   docs at http://localhost:8000/docs
+│
+├── n8n/
+│   └── workflows/
+│       └── main_pipeline.json   # importable n8n workflow definition
+│                                #   5 nodes: Schedule → HTTP Request → Log Success
+│                                #                                    ↘ Parse Error → Telegram
 │
 ├── scrapers/
 │   ├── base_scraper.py          # shared session, hash generation, normalize()
@@ -171,7 +205,7 @@ devsignal/
 │   ├── __init__.py
 │   ├── ios_classifier.py        # heuristic + Llama 3.1 iOS product detection
 │   ├── scorer.py                # 8-factor scoring model (0-100) with breakdown
-│   └── outreach_generator.py   # recruiter messages — personalised by name
+│   └── outreach_generator.py    # recruiter messages — personalised by name
 │
 ├── notifications/
 │   └── telegram_bot.py          # digest (scores + recruiter links) + alerts
@@ -186,12 +220,233 @@ devsignal/
 │   ├── test_scorer.py           # scorer + classifier tests (mocked, no API calls)
 │   └── test_enricher.py         # domain, LinkedIn, email extraction tests
 │
+├── logs/                        # created by launchd — gitignored
+│   ├── api_server.log
+│   └── api_server_error.log
+│
 ├── docker-compose.yml           # PostgreSQL 16 + n8n, health checks, volumes
+├── run_pipeline.sh              # shell wrapper called by FastAPI — works in Docker + Mac
 ├── run_scraper.py               # pipeline entry point — scrape → score → enrich
 ├── run_scorer.py                # standalone scorer — python run_scorer.py [--limit N]
 ├── run_enricher.py              # standalone enricher — python run_enricher.py [--min-score N]
 ├── run_watchlist.py             # watchlist manager — add/list/check iOS companies
 └── requirements.txt
+```
+
+---
+
+## Running DevSignal
+
+### Start everything
+
+```bash
+cd ~/projects/DevSignal
+docker compose up -d        # starts Postgres + n8n
+python api/pipeline_server.py   # start FastAPI (or rely on launchd)
+```
+
+### Stop everything
+
+```bash
+docker compose down         # stops containers, keeps data
+docker compose down -v      # stops containers AND deletes all data
+```
+
+### Manual pipeline run
+
+```bash
+source venv/bin/activate
+python run_scraper.py       # scrape + score + enrich + notify
+python run_scorer.py        # score all unscored jobs
+python run_enricher.py      # enrich top jobs
+```
+
+### n8n automation UI
+
+- URL: `http://localhost:5678`
+- Username: `admin`
+- Password: `devsignal2024`
+- Schedule: every 12 hours
+- Execution logs: **Executions** tab in n8n sidebar
+
+### FastAPI server
+
+- URL: `http://localhost:8000`
+- Interactive docs: `http://localhost:8000/docs`
+- Health check: `GET /health` (no auth)
+- Trigger pipeline: `POST /run-pipeline` with `X-Api-Key` header
+- Managed by launchd — starts on login, restarts on crash
+
+```bash
+# Manually trigger via curl
+curl -X POST http://localhost:8000/run-pipeline \
+  -H "X-Api-Key: devsignal-local-key-2024"
+
+# Check last run result
+curl http://localhost:8000/status \
+  -H "X-Api-Key: devsignal-local-key-2024"
+
+# View server logs
+tail -f logs/api_server.log
+```
+
+### launchd service management
+
+```bash
+# Stop the API server
+launchctl stop com.devsignal.api
+
+# Fully unload (disable autostart)
+launchctl unload ~/Library/LaunchAgents/com.devsignal.api.plist
+
+# Reload after changes
+launchctl unload ~/Library/LaunchAgents/com.devsignal.api.plist
+launchctl load   ~/Library/LaunchAgents/com.devsignal.api.plist
+```
+
+### Database access
+
+```bash
+docker exec -it devsignal_postgres psql -U radar -d devsignal
+```
+
+### Check system status
+
+```bash
+docker compose ps               # container health
+python -m pytest tests/ -v      # run all tests
+curl http://localhost:8000/health
+```
+
+---
+
+## Setup
+
+**Prerequisites:** Python 3.12, Docker Desktop, free API keys for Groq, Hunter.io, and Serper.dev
+
+```bash
+# 1. Clone
+git clone https://github.com/yourname/devsignal.git
+cd devsignal
+
+# 2. Virtual environment
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Environment variables
+cp .env.example .env
+# Fill in:
+#   DATABASE_URL
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+#   GROQ_API_KEY        — free at console.groq.com
+#   HUNTER_API_KEY      — free at hunter.io (25 searches/month)
+#   SERPER_API_KEY      — free at serper.dev (2,500 searches on signup)
+#   PIPELINE_API_KEY    — any secret string, e.g. devsignal-local-key-2024
+
+# 4. Start database + n8n
+docker compose up -d
+docker compose ps   # postgres should show (healthy)
+
+# 5. Confirm schema
+python storage/migrations.py
+# Expected: "All done." with all 3 tables listed
+
+# 6. Start the FastAPI server (permanent — survives reboots)
+launchctl load ~/Library/LaunchAgents/com.devsignal.api.plist
+
+# 7. Import n8n workflow
+#    Open http://localhost:5678 → + → Import from file
+#    Select: n8n/workflows/main_pipeline.json
+#    Toggle workflow to Active
+
+# 8. Run manually to verify end-to-end
+curl -X POST http://localhost:8000/run-pipeline \
+  -H "X-Api-Key: devsignal-local-key-2024"
+```
+
+Run it twice. The second run should insert 0 new jobs. Scores and enrichment data
+from the first run are preserved.
+
+**Individual runners:**
+
+```bash
+python run_scorer.py                       # score all unscored jobs
+python run_scorer.py --limit 5             # test with 5 jobs first
+
+python run_enricher.py                     # enrich unenriched jobs >= default threshold
+python run_enricher.py --min-score 70      # explicit score threshold
+python run_enricher.py --limit 3           # test with 3 jobs first
+python run_enricher.py --all               # enrich every job regardless of score
+
+python run_watchlist.py add "Razorpay" "iOS payment SDK and merchant app"
+python run_watchlist.py list
+python run_watchlist.py check              # see if any watchlist company has posted
+```
+
+---
+
+## Pipeline walkthrough
+
+```
+python run_scraper.py   (or triggered automatically by n8n every 12 hours)
+
+  DevSignal — Scraper Pipeline  (Phase 7)
+  ══════════════════════════════════════════════════════════════
+
+  [DB] Scrape run #5 started
+
+  Raw jobs by source:
+    RemoteOK                  8 jobs
+    HackerNews                12 jobs
+    YC WorkAtAStartup         5 jobs
+    Remotive                  9 jobs
+    ─────────────────────────────────
+    TOTAL                     34 jobs
+
+  [Parser] Parsed 34 jobs
+  [Filter] 34 → 21 jobs
+  [Deduplicator] 13 genuinely new jobs
+  [DB] Inserted 13 new jobs
+
+  ── AI Scorer ──────────────────────────────────────────────────
+
+  [Classifier] Checking iOS product companies...
+    [1/13] nooro                      → iOS
+    [2/13] Some Web Agency            → not iOS
+    [3/13] YC S24 Mobile Startup      → iOS
+    ...
+
+  [Scorer] Scoring all jobs...
+    [1/13] nooro                      → 68/100
+    [2/13] HN Anonymous Startup       → 18/100
+    [3/13] YC S24 Mobile Startup      → 90/100  ← alert sent
+    ...
+
+  [Outreach] Generating messages for 5 jobs (score >= 65)...
+    nooro                           ✓ (198 chars)
+    YC S24 Mobile Startup           ✓ (163 chars)
+
+  ── Recruiter Enrichment ───────────────────────────────────────
+
+  [Hunter] Remaining quota this month: 22 searches
+
+  [Enricher] Starting enrichment...
+    [1/4] nooro                      (score: 68) → enriched (hunter+linkedin)
+    [2/4] YC S24 Mobile Startup      (score: 90) → enriched (hunter)
+    [3/4] FitTrack                   (score: 74) → enriched (linkedin)
+    [4/4] HN Anonymous Startup       (score: 18) → no data found
+
+  Enrichment Summary
+  ══════════════════════════════════════════════════════════════
+    Jobs processed: 4       Enriched: 3       Empty: 1
+
+  Database totals:
+    Total stored:     34
+    Scored:           34
+    Enriched:         3 (this run)
+    Remote jobs:      28
+    Applied:          0
 ```
 
 ---
@@ -210,10 +465,10 @@ opportunities          -- core table, one row per unique job
   visa_sponsorship     VARCHAR  CHECK IN ('Yes','No','Unknown')
   experience_req       VARCHAR                     -- extracted by job_parser
   tech_stack           TEXT                        -- comma-separated keywords
-  opportunity_score    SMALLINT CHECK 0-100        -- filled by AI scorer (Phase 5)
-  score_breakdown      JSONB                       -- per-factor scores (Phase 5)
+  opportunity_score    SMALLINT CHECK 0-100        -- filled by AI scorer
+  score_breakdown      JSONB                       -- per-factor scores
   outreach_message     TEXT                        -- personalised by recruiter name
-  recruiter_name       VARCHAR                     -- filled by enricher (Phase 6)
+  recruiter_name       VARCHAR                     -- filled by enricher
   recruiter_role       VARCHAR                     -- e.g. "iOS Engineering Manager"
   linkedin_profile     TEXT                        -- recruiter LinkedIn URL
   email                VARCHAR                     -- direct or pattern-constructed
@@ -298,129 +553,21 @@ Layer 4 — AI fallback (free Groq quota)
 
 ---
 
-## Setup
-
-**Prerequisites:** Python 3.12, Docker Desktop, free API keys for Groq, Hunter.io, and Serper.dev
-
-```bash
-# 1. Clone
-git clone https://github.com/yourname/devsignal.git
-cd devsignal
-
-# 2. Virtual environment
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# 3. Environment variables
-cp .env.example .env
-# Fill in:
-#   DATABASE_URL
-#   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-#   GROQ_API_KEY        — free at console.groq.com
-#   HUNTER_API_KEY      — free at hunter.io (25 searches/month)
-#   SERPER_API_KEY      — free at serper.dev (2,500 searches on signup)
-
-# 4. Start database
-docker compose up -d
-docker compose ps   # postgres should show (healthy)
-
-# 5. Confirm schema
-python storage/migrations.py
-# Expected: "All done." with all 3 tables listed
-
-# 6. Run
-python run_scraper.py
-# Scrapes → filters → stores → scores → enriches → Telegram digest
-```
-
-Run it twice. The second run should insert 0 new jobs. Scores and enrichment data
-from the first run are preserved.
-
-**Individual runners:**
-
-```bash
-python run_scorer.py                       # score all unscored jobs
-python run_scorer.py --limit 5             # test with 5 jobs first
-
-python run_enricher.py                     # enrich unenriched jobs >= default threshold
-python run_enricher.py --min-score 70      # explicit score threshold
-python run_enricher.py --limit 3           # test with 3 jobs first
-python run_enricher.py --all               # enrich every job regardless of score
-
-python run_watchlist.py add "Razorpay" "iOS payment SDK and merchant app"
-python run_watchlist.py list
-python run_watchlist.py check              # see if any watchlist company has posted
-```
-
----
-
-## Pipeline walkthrough
-
-```
-python run_scraper.py
-
-  DevSignal — Scraper Pipeline  (Phase 6)
-  ══════════════════════════════════════════════════════════════
-
-  [DB] Scrape run #5 started
-
-  Raw jobs by source:
-    RemoteOK                  8 jobs
-    HackerNews                12 jobs
-    YC WorkAtAStartup         5 jobs
-    Remotive                  9 jobs
-    ─────────────────────────────────
-    TOTAL                     34 jobs
-
-  [Parser] Parsed 34 jobs
-  [Filter] 34 → 21 jobs
-  [Deduplicator] 13 genuinely new jobs
-  [DB] Inserted 13 new jobs
-
-  ── AI Scorer ──────────────────────────────────────────────────
-
-  [Classifier] Checking iOS product companies...
-    [1/13] nooro                      → iOS
-    [2/13] Some Web Agency            → not iOS
-    [3/13] YC S24 Mobile Startup      → iOS
-    ...
-
-  [Scorer] Scoring all jobs...
-    [1/13] nooro                      → 68/100
-    [2/13] HN Anonymous Startup       → 18/100
-    [3/13] YC S24 Mobile Startup      → 90/100  ← alert sent
-    ...
-
-  [Outreach] Generating messages for 5 jobs (score >= 65)...
-    nooro                           ✓ (198 chars)
-    YC S24 Mobile Startup           ✓ (163 chars)
-
-  ── Recruiter Enrichment ───────────────────────────────────────
-
-  [Hunter] Remaining quota this month: 22 searches
-
-  [Enricher] Starting enrichment...
-    [1/4] nooro                      (score: 68) → enriched (hunter+linkedin)
-    [2/4] YC S24 Mobile Startup      (score: 90) → enriched (hunter)
-    [3/4] FitTrack                   (score: 74) → enriched (linkedin)
-    [4/4] HN Anonymous Startup       (score: 18) → no data found
-
-  Enrichment Summary
-  ══════════════════════════════════════════════════════════════
-    Jobs processed: 4       Enriched: 3       Empty: 1
-
-  Database totals:
-    Total stored:     34
-    Scored:           34
-    Enriched:         3 (this run)
-    Remote jobs:      28
-    Applied:          0
-```
-
----
-
 ## Key design decisions
+
+**n8n + FastAPI separation** — n8n handles scheduling and error routing; FastAPI
+handles execution. Two separate concerns, cleanly separated. Any scheduler — cron,
+a GitHub Action, another tool — can trigger the pipeline via `POST /run-pipeline`
+without touching the pipeline code. This also gives the pipeline an interactive
+docs UI at `/docs` out of the box.
+
+**host.docker.internal** — n8n runs inside Docker; the FastAPI server runs on the
+Mac. Docker's special DNS name `host.docker.internal` lets containers reach
+services on the host machine without any network configuration.
+
+**launchd over nohup** — macOS launchd manages the FastAPI process like a proper
+system service: starts on login, restarts on crash, writes logs to named files.
+`nohup` achieves the same result but with no crash recovery and no log rotation.
 
 **Repository pattern** — all SQL lives in `storage/db_client.py`. No other file
 imports `psycopg2` directly. One place to change queries, one place to optimise,
@@ -459,11 +606,6 @@ requests are reserved for genuinely high-value opportunities.
 `linkedin_finder.py` runs `site:linkedin.com/in "Company" "iOS"` queries through
 Serper.dev's Google Search API instead. Public profile URLs come back in search
 results without ever touching LinkedIn's servers directly.
-
-**Outreach threshold** — messages are only generated for jobs scoring ≥ 65. Below
-that threshold the quality signal is too weak to justify the API call and the
-recruiter's attention. When a recruiter name exists in the database, the message
-opens with `"Hi [FirstName],"` automatically.
 
 **Connection pool** — `psycopg2.pool.ThreadedConnectionPool` (1–5 connections)
 is created once at import time as a module-level singleton. Every import of
@@ -568,6 +710,10 @@ SELECT
   COUNT(*) FILTER (WHERE linkedin_profile != '')         AS have_linkedin
 FROM opportunities;
 
+# Check n8n execution history (last 3 pipeline runs)
+SELECT id, started_at, finished_at, jobs_found, jobs_new
+  FROM scrape_runs ORDER BY id DESC LIMIT 3;
+
 # Re-score all jobs
 UPDATE opportunities SET opportunity_score = NULL, score_breakdown = NULL;
 python run_scorer.py
@@ -593,10 +739,9 @@ python -m pytest tests/ -v
 
 ---
 
-## Coming in Phase 7
+## Coming in Phase 8
 
-n8n automation. The pipeline currently runs only when you manually type
-`python run_scraper.py`. Phase 7 wires everything into n8n running in Docker —
-a cron trigger fires every 12 hours, chains the scraper → scorer → enricher →
-Telegram digest automatically, and logs each run's summary to the database.
-Zero manual intervention after setup.
+Streamlit analytics dashboard with live stats from the database: score
+distribution charts, source breakdown, enrichment coverage, and application
+tracking UI. Deploys to Streamlit Cloud for a live public URL — ready to link
+from a resume or LinkedIn profile.
