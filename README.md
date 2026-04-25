@@ -11,7 +11,7 @@
 [![n8n](https://img.shields.io/badge/n8n-Automation-EA4B71?style=flat-square)](https://n8n.io)
 [![Groq](https://img.shields.io/badge/Groq-Free_AI-F55036?style=flat-square)](https://groq.com)
 
-**[Live Demo →]([https://YOUR_STREAMLIT_URL](https://devsignal-sahanmaiti.streamlit.app))**
+**[Live Demo →](https://devsignal-sahanmaiti.streamlit.app/)**
 
 ---
 
