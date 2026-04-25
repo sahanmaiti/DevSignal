@@ -1,7 +1,8 @@
-# dashboard/app.py
+# streamlit_app.py
+# Root-level entry point for Streamlit Cloud.
+# Streamlit Cloud looks for pages/ relative to THIS file's location.
+
 import streamlit as st
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 st.set_page_config(
     page_title="DevSignal",
@@ -25,7 +26,6 @@ div[data-testid="metric-container"] {
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar branding — shows on every page
 with st.sidebar:
     st.markdown("## 📡 DevSignal")
     st.markdown("*iOS Internship Radar*")
@@ -36,6 +36,5 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# Default landing page shows Overview
-from dashboard.pages.overview import render
-render()
+# Show overview on the landing page
+exec(open("pages/1_Overview.py").read())
