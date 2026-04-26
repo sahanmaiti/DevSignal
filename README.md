@@ -32,7 +32,7 @@
 
 Searching for iOS internships is repetitive, noisy, and punishingly manual. For a CS student actively building with Swift and SwiftUI, doing this properly means:
 
-- Checking 10+ platforms every day for new postings
+- Checking 15+ platforms every day for new postings
 - Most "iOS intern" listings require 3+ years of experience or don't even use Swift
 - Recruiter contact details are scattered across LinkedIn, company websites, and job descriptions
 - By the time you find a real opportunity, write a personalized message, and apply — it's already a week old and half-filled
@@ -45,7 +45,7 @@ Searching for iOS internships is repetitive, noisy, and punishingly manual. For 
 
 | Stage | What happens |
 |---|---|
-| **Discovery** | Scrapes 4 job platforms simultaneously for iOS/Swift roles |
+| **Discovery** | Scrapes 15 job platforms simultaneously for iOS/Swift roles |
 | **Parsing** | Extracts structured fields (experience, salary, remote, visa) from raw descriptions |
 | **Filtering** | Drops senior roles, non-iOS positions, and anything requiring 3+ years |
 | **Deduplication** | MD5 hash fingerprinting — the same job never appears twice, across any number of runs |
@@ -61,7 +61,7 @@ Searching for iOS internships is repetitive, noisy, and punishingly manual. For 
 ## Features
 
 **Multi-Source Job Discovery**
-Monitors RemoteOK (JSON API), HackerNews "Who is Hiring" threads (Algolia API), YC WorkAtAStartup, and Remotive simultaneously. Every scraper inherits from a common `BaseScraper` abstract class that enforces a consistent `normalize → hash → run` interface. Adding a new source means implementing one method.
+Monitors RemoteOK, HackerNews "Who is Hiring", YC WorkAtAStartup, Remotive, Arbeitnow, Himalayas, WeWorkRemotely, Startup.jobs, Wellfound, Cutshort, Naukri, IndieHackers, Arc.dev and additional hybrid sources simultaneously. Every scraper inherits from a common `BaseScraper` abstract class that enforces a consistent `normalize → hash → run` interface. Adding a new source means implementing one method.
 
 **8-Factor AI Opportunity Scoring**
 Every job is evaluated by Llama 3.1 8B (via Groq's free inference API) against a structured scoring rubric with explicit point weights:
@@ -126,10 +126,19 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
            ┌───────────────▼────────────────┐
            │         Scraper Layer          │
            │                                │
-           │  RemoteOK    →  JSON API       │
-           │  HackerNews  →  Algolia API    │
-           │  YC Startup  →  JSON API       │
-           │  Remotive    →  JSON API       │
+           │  RemoteOK        → JSON API    │
+           │  HackerNews      → Algolia API │
+           │  YC Startup      → JSON API    │
+           │  Remotive        → JSON API    │
+           │  Arbeitnow       → JSON API    │
+           │  Himalayas       → JSON API    │
+           │  WeWorkRemotely  → RSS Feed    │
+           │  Startup.jobs    → RSS Feed    │
+           │  Wellfound       → Hybrid      │
+           │  Cutshort        → Hybrid      │
+           │  Naukri          → Hybrid      │
+           │  IndieHackers    → HTML        │
+           │  Arc.dev         → Hybrid      │
            └───────────────┬────────────────┘
                            │  raw job dicts
            ┌───────────────▼────────────────┐
@@ -181,7 +190,7 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
 |---|---|---|
 | **Dashboard** | Streamlit 1.35, Plotly | Analytics UI, application tracking |
 | **API Server** | FastAPI, Uvicorn | Pipeline webhook endpoint |
-| **Scraping** | Python 3.12, requests, feedparser | HTTP + RSS job collection |
+| **Scraping** | Python 3.12, requests, BeautifulSoup4, feedparser | HTTP, HTML, RSS multi-source job collection |
 | **Processing** | re, custom NLP | Field extraction, filtering, deduplication |
 | **AI / LLM** | Groq API (Llama 3.1 8B) | Scoring, classification, outreach |
 | **Database** | PostgreSQL 16, psycopg2, SQLAlchemy | Primary store + Neon cloud mirror |
@@ -313,7 +322,7 @@ The `.env` file is gitignored. A safe `.env.example` with placeholder values is 
 
 ```bash
 # ── Core pipeline ──────────────────────────────────────────────────────────
-python run_scraper.py                  # Scrape → parse → filter → dedup → store → notify
+python run_scraper.py                  # Tiered multi-source pipeline (15+ sources) → parse → filter → dedup → store → notify
 python run_scorer.py                   # AI score all unscored jobs
 python run_scorer.py --limit 5         # Score only 5 (useful for testing)
 python run_enricher.py                 # Enrich jobs scoring ≥70
@@ -355,11 +364,20 @@ docker compose down -v                 # Stop + delete all volumes
 devsignal/
 │
 ├── scrapers/                    # One file per data source
-│   ├── base_scraper.py          # Abstract base: normalize(), hash(), run()
-│   ├── remoteok_scraper.py      # RemoteOK public JSON API
-│   ├── hackernews_scraper.py    # HN "Who is Hiring" via Algolia API
-│   ├── yc_scraper.py            # YC WorkAtAStartup
-│   └── remotive_scraper.py      # Remotive public JSON API
+│   ├── base_scraper.py
+│   ├── remoteok_scraper.py
+│   ├── hackernews_scraper.py
+│   ├── yc_scraper.py
+│   ├── remotive_scraper.py
+│   ├── arbeitnow_scraper.py
+│   ├── himalayas_scraper.py
+│   ├── weworkremotely_scraper.py
+│   ├── startupjobs_scraper.py
+│   ├── wellfound_scraper.py
+│   ├── cutshort_scraper.py
+│   ├── naukri_scraper.py
+│   ├── indiehackers_scraper.py
+│   └── arc_scraper.py
 │
 ├── processors/                  # Data cleaning and enrichment
 │   ├── job_parser.py            # Regex extraction: exp, salary, remote, visa
@@ -436,7 +454,7 @@ devsignal/
 This project was built to demonstrate production-level thinking, not just working code.
 
 **System Design and Separation of Concerns**
-The pipeline is structured in strict layers: scraping, processing, AI, storage, and notification. Each layer communicates through defined interfaces. Any layer can fail, be replaced, or be extended without touching the others. The `BaseScraper` abstract class enforces a contract — every new source automatically gets normalization, hash generation, error handling, and the `run()` entrypoint for free.
+The pipeline is structured in strict layers: tiered scraping, processing, AI, storage, and notification. Any layer can fail, be replaced, or be extended without touching the others. The `BaseScraper` abstract class enforces a contract — every new source automatically gets normalization, hash generation, error handling, and the `run()` entrypoint for free.
 
 **ETL Pipeline Design**
 Raw data flows through a typed transformation chain with clear stage boundaries. The deduplicator fetches all existing hashes in a single query, builds a Python `set`, and checks the entire batch in O(1) per job. The filter engine distinguishes between "confidently exclude" (senior title, proven 4+ year requirement) and "benefit of the doubt" (unknown experience) — false negatives are cheaper than missed opportunities.
@@ -463,7 +481,7 @@ When n8n's newer versions removed the `Execute Command` node, the system was red
 - [ ] **Resume tailoring** — Given a job description, rewrite specific resume bullets to match using the same Groq pipeline
 - [ ] **LinkedIn outreach automation** — Browser automation layer to send generated messages directly from the dashboard
 - [ ] **Ranking model v2** — Train a lightweight classifier on personal application outcome data collected over time
-- [ ] **Additional sources** — Glassdoor, Cutshort, Naukri, Otta (Playwright-based with proxy rotation)
+- [ ] **Additional sources** — Glassdoor, LinkedIn, Indeed, Otta (Playwright-based with proxy rotation)
 - [ ] **Email digest** — Weekly HTML report via SendGrid as an alternative to Telegram
 - [ ] **Interview prep assistant** — For each accepted application, auto-generate company-specific Swift/iOS questions
 - [ ] **Gmail integration** — Parse recruiter replies and auto-update response status in the database
@@ -477,7 +495,7 @@ Most portfolio projects demonstrate that you can follow a tutorial. DevSignal de
 
 It required designing a multi-stage data pipeline under real constraints — limited API quota, changing platform structures, unreliable data quality. Making genuine product decisions: which API to call when, how to spend 25 free Hunter.io searches a month, how to handle failures at every stage without crashing the system. Writing LLM prompts that produce consistent structured output reliably, not just in demos. Responding to a live GitHub secret scanning alert and purging credentials from git history correctly.
 
-These are engineering problems that appear in production. The result is a running, autonomous system that solves a genuine personal problem, costs nothing to operate, and has surfaced iOS internship opportunities that would not have been found manually.
+These are engineering problems that appear in production. The result is a running, autonomous system that solves a genuine personal problem, costs nothing to operate, and now monitors a significantly broader global market of iOS internship opportunities that would not have been found manually.
 
 ---
 
