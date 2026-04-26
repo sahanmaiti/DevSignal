@@ -3,6 +3,7 @@ annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.13.0
 attrs==26.1.0
+beautifulsoup4==4.14.3
 blinker==1.9.0
 cachetools==7.0.6
 certifi==2026.2.25
@@ -47,6 +48,7 @@ sgmllib3k==1.0.0
 six==1.17.0
 smmap==5.0.3
 sniffio==1.3.1
+soupsieve==2.8.3
 SQLAlchemy==2.0.49
 starlette==1.0.0
 streamlit==1.56.0
