@@ -1,5 +1,4 @@
-# IndieHackers Jobs — small team / indie startup jobs
-# Good source for bootstrapped startups not on mainstream boards
+# scrapers/indiehackers_scraper.py — fixed for current page structure
 
 import sys, os, re
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,73 +11,82 @@ from config.keywords import IOS_ROLE_KEYWORDS, IOS_TECH_KEYWORDS, EXCLUDE_KEYWOR
 class IndieHackersScraper(BaseScraper):
     SOURCE_NAME = "IndieHackers"
 
-    JOBS_URL = "https://www.indiehackers.com/jobs"
+    # IH Jobs board
+    JOBS_URL   = "https://www.indiehackers.com/jobs"
+    # IH also has a hiring board in posts
+    HIRING_URL = "https://www.indiehackers.com/jobs/mobile"
 
     def fetch_jobs(self) -> list[dict]:
-        ios_jobs = []
+        ios_jobs  = []
+        seen_urls = set()
 
-        try:
-            resp = self.session.get(self.JOBS_URL, timeout=15)
-            resp.raise_for_status()
-
-            soup  = BeautifulSoup(resp.text, "html.parser")
-
-            # IH job cards have consistent class patterns
-            cards = soup.find_all("div", class_=re.compile(r"job|hiring", re.I))
-            if not cards:
-                # Try finding any card-like elements with job content
-                cards = soup.find_all(["article", "li"], recursive=True)
-
-            seen_urls = set()
-
-            for card in cards:
-                text = card.get_text(" ", strip=True)
-
-                if not any(kw in text.lower() for kw in IOS_ROLE_KEYWORDS + IOS_TECH_KEYWORDS):
+        for url in [self.JOBS_URL, self.HIRING_URL]:
+            try:
+                resp = self.session.get(url, timeout=20)
+                if resp.status_code != 200:
                     continue
 
-                link   = card.find("a", href=re.compile(r"/jobs/|/job/|/hiring/"))
-                if not link:
-                    link = card.find("a", href=True)
+                soup = BeautifulSoup(resp.text, "html.parser")
 
-                href     = link["href"] if link else ""
-                full_url = (f"https://www.indiehackers.com{href}"
-                            if href.startswith("/") else href)
+                # IH renders jobs inside component divs with specific classes
+                # Try multiple selector patterns
+                job_containers = (
+                    soup.find_all("div", class_=re.compile(r"job-post|job_post|JobPost", re.I)) or
+                    soup.find_all("a", href=re.compile(r"/jobs/")) or
+                    soup.find_all(class_=re.compile(r"hiring|job|position", re.I))
+                )
 
-                if full_url in seen_urls:
-                    continue
-                seen_urls.add(full_url)
+                for el in job_containers[:30]:
+                    # Get the link
+                    if el.name == "a":
+                        link_el = el
+                        href    = el.get("href", "")
+                    else:
+                        link_el = el.find("a", href=True)
+                        href    = link_el["href"] if link_el else ""
 
-                # Extract title and company from text
-                lines = [l.strip() for l in text.split("\n") if l.strip()]
-                title   = lines[0] if lines else text[:80]
-                company = lines[1] if len(lines) > 1 else ""
+                    full_url = (f"https://www.indiehackers.com{href}"
+                                if href.startswith("/") else href or url)
 
-                if self._should_exclude(title.lower()):
-                    continue
+                    if full_url in seen_urls or full_url == url:
+                        continue
 
-                ios_jobs.append({
-                    "company":    company[:100],
-                    "role":       title[:200],
-                    "location":   "Remote" if "remote" in text.lower() else "See post",
-                    "remote":     "Yes" if "remote" in text.lower() else "Unknown",
-                    "visa":       "Unknown",
-                    "experience": "",
-                    "tags":       self._extract_tags(text.lower()),
-                    "url":        full_url or self.JOBS_URL,
-                    "description": text[:600],
-                })
+                    text = el.get_text(" ", strip=True)
+                    if len(text) < 15:
+                        continue
 
-        except Exception as e:
-            print(f"[IndieHackers] Scrape failed: {e}")
+                    searchable = text.lower()
+
+                    # Filter for iOS relevance
+                    if not any(kw in searchable for kw in IOS_ROLE_KEYWORDS + IOS_TECH_KEYWORDS):
+                        continue
+                    if any(kw in searchable for kw in EXCLUDE_KEYWORDS):
+                        continue
+
+                    seen_urls.add(full_url)
+
+                    lines   = [l.strip() for l in text.split("\n") if l.strip() and len(l.strip()) > 3]
+                    title   = lines[0][:150] if lines else text[:100]
+                    company = lines[1][:100] if len(lines) > 1 else ""
+
+                    ios_jobs.append({
+                        "company":    company,
+                        "role":       title,
+                        "location":   "Remote" if "remote" in searchable else "See post",
+                        "remote":     "Yes" if "remote" in searchable else "Unknown",
+                        "visa":       "Unknown",
+                        "experience": "",
+                        "tags":       ", ".join(
+                            kw for kw in IOS_TECH_KEYWORDS if kw in searchable
+                        )[:100],
+                        "url":        full_url,
+                        "description": text[:600],
+                    })
+
+            except Exception as e:
+                print(f"[IndieHackers] {url} failed: {e}")
 
         return ios_jobs
-
-    def _should_exclude(self, text):
-        return any(kw in text for kw in EXCLUDE_KEYWORDS)
-
-    def _extract_tags(self, text):
-        return ", ".join(kw for kw in IOS_TECH_KEYWORDS if kw in text)[:100]
 
 
 if __name__ == "__main__":

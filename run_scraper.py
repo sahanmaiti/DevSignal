@@ -16,19 +16,19 @@ from scrapers.yc_scraper            import YCScraper
 from scrapers.remotive_scraper      import RemotiveScraper
 from scrapers.arbeitnow_scraper     import ArbeitnowScraper
 from scrapers.himalayas_scraper     import HimalayasScraper
-#from scrapers.jobicy_scraper        import JobicyScraper
+from scrapers.jobspresso_scraper    import JobspressoScraper
 from scrapers.weworkremotely_scraper import WeWorkRemotelyScraper
 from scrapers.startupjobs_scraper   import StartupJobsScraper
 
 # ── Tier 2: Google Jobs via Serper (covers LinkedIn, Glassdoor, Indeed) ───
-#from scrapers.google_jobs_scraper   import GoogleJobsScraper
+from scrapers.google_jobs_scraper   import GoogleJobsScraper
 
 # ── Tier 3: Direct scraping ───────────────────────────────────────────────
 from scrapers.wellfound_scraper     import WellfoundScraper
 from scrapers.cutshort_scraper      import CutshortScraper
 from scrapers.naukri_scraper        import NaukriScraper
 from scrapers.indiehackers_scraper  import IndieHackersScraper
-#from scrapers.producthunt_scraper   import ProductHuntScraper
+from scrapers.producthunt_scraper   import ProductHuntScraper
 from scrapers.arc_scraper           import ArcScraper
 
 from processors.job_parser          import parse_jobs
@@ -44,7 +44,7 @@ def print_line(char="─", width=65):
 
 
 def run_tier(scrapers: list, tier_name: str,
-             delay: float = 0) -> list:
+            delay: float = 0) -> list:
     """Runs a group of scrapers, returns combined raw jobs."""
     print(f"\n{'─'*65}")
     print(f"  {tier_name}")
@@ -89,7 +89,7 @@ def main():
             RemotiveScraper(),
             ArbeitnowScraper(),
             HimalayasScraper(),
-            JobicyScraper(),
+            JobspressoScraper(),
             WeWorkRemotelyScraper(),
             StartupJobsScraper(),
         ]

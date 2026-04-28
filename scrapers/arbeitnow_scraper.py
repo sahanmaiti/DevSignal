@@ -70,8 +70,14 @@ class ArbeitnowScraper(BaseScraper):
         return ios_jobs
 
     def _is_ios_relevant(self, text):
-        for kw in IOS_ROLE_KEYWORDS + IOS_TECH_KEYWORDS:
+        import re
+        # Require "ios" to be a whole word, not inside another word
+        for kw in IOS_ROLE_KEYWORDS:
             if kw in text:
+                return True
+    # For tech keywords use word boundary check
+        for kw in IOS_TECH_KEYWORDS:
+            if re.search(r'\b' + re.escape(kw) + r'\b', text):
                 return True
         return False
 

@@ -1,9 +1,9 @@
-# Cutshort — popular in India for tech jobs, has a public API
-# API: https://cutshort.io/api/jobs
+# scrapers/cutshort_scraper.py — HTML-based, no auth
 
-import sys, os, re
+import sys, os, re, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from bs4 import BeautifulSoup
 from scrapers.base_scraper import BaseScraper
 from config.keywords import IOS_ROLE_KEYWORDS, IOS_TECH_KEYWORDS, EXCLUDE_KEYWORDS
 
@@ -11,115 +11,134 @@ from config.keywords import IOS_ROLE_KEYWORDS, IOS_TECH_KEYWORDS, EXCLUDE_KEYWOR
 class CutshortScraper(BaseScraper):
     SOURCE_NAME = "Cutshort"
 
-    # Cutshort has a public job listing endpoint
-    SEARCH_URL = "https://cutshort.io/api/v2/jobs"
-    BROWSE_URL = "https://cutshort.io/jobs/ios-developer-jobs"
+    SEARCH_URLS = [
+        "https://cutshort.io/jobs#!?keySkills=iOS",
+        "https://cutshort.io/jobs#!?keySkills=Swift",
+        "https://cutshort.io/jobs/ios-developer-jobs",
+    ]
+
+    # Cutshort also exposes job data via their public sitemap/search
+    SITEMAP_API = "https://cutshort.io/api/v1/jobs/search"
 
     def fetch_jobs(self) -> list[dict]:
-        jobs = self._fetch_via_api()
-        if jobs:
-            return jobs
-        return self._fetch_via_scrape()
+        jobs = self._fetch_via_public_api()
+        if not jobs:
+            jobs = self._fetch_via_html()
+        return jobs
 
-    def _fetch_via_api(self) -> list[dict]:
-        """Attempts Cutshort's public API."""
+    def _fetch_via_public_api(self) -> list[dict]:
+        """
+        Cutshort has a public search API used by their own search page.
+        No auth needed for read-only job browsing.
+        """
         try:
             resp = self.session.get(
-                self.SEARCH_URL,
+                "https://cutshort.io/api/v1/jobs/search",
                 params={
-                    "role":  "ios-developer",
-                    "limit": 50,
-                    "offset": 0,
+                    "q":        "iOS Swift",
+                    "page":     1,
+                    "pageSize": 30,
                 },
+                headers={**self.session.headers, "Accept": "application/json"},
                 timeout=12,
             )
             if resp.status_code != 200:
                 return []
 
             data = resp.json()
-            jobs_raw = data.get("jobs", data.get("data", []))
+            jobs_list = (data.get("data", {}).get("jobs", [])
+                        if isinstance(data.get("data"), dict)
+                        else data.get("jobs", []))
 
             ios_jobs = []
-            for job in jobs_raw:
+            for job in jobs_list:
                 title = job.get("title", job.get("role", ""))
-                if self._should_exclude(title.lower()):
+                if any(kw in title.lower() for kw in EXCLUDE_KEYWORDS):
                     continue
 
-                company_data = job.get("company", {})
-                company_name = (company_data.get("name", "") if isinstance(company_data, dict)
-                               else str(company_data))
+                company = (job.get("company", {}).get("name", "")
+                        if isinstance(job.get("company"), dict)
+                        else job.get("companyName", ""))
+
+                skills = job.get("skills", job.get("keySkills", []))
+                if isinstance(skills, list):
+                    tags = ", ".join(str(s) for s in skills[:8])
+                else:
+                    tags = str(skills)[:100]
+
+                locs = job.get("locations", job.get("location", []))
+                location = (", ".join(locs[:2]) if isinstance(locs, list)
+                            else str(locs))
+
+                slug   = job.get("slug", job.get("id", ""))
+                url    = f"https://cutshort.io/job/{slug}" if slug else ""
 
                 ios_jobs.append({
-                    "company":    company_name,
+                    "company":    company,
                     "role":       title,
-                    "location":   ", ".join(job.get("locations", [])) or "India",
+                    "location":   location or "India",
                     "remote":     "Yes" if job.get("isRemote") else "Unknown",
                     "visa":       "Unknown",
                     "experience": f"{job.get('minExp', '')}-{job.get('maxExp', '')} yrs",
-                    "tags":       ", ".join(job.get("skills", [])[:8]),
-                    "url":        f"https://cutshort.io/job/{job.get('id', '')}",
+                    "tags":       tags,
+                    "url":        url,
                     "description": job.get("description", "")[:800],
-                    "salary":     f"₹{job.get('minSalary', '')}-{job.get('maxSalary', '')} LPA" if job.get("minSalary") else "",
                 })
-
             return ios_jobs
 
         except Exception:
             return []
 
-    def _fetch_via_scrape(self) -> list[dict]:
-        """Falls back to scraping Cutshort's browse page."""
-        from bs4 import BeautifulSoup
-
+    def _fetch_via_html(self) -> list[dict]:
+        """HTML fallback — parses Cutshort's job listing page."""
         ios_jobs  = []
-        urls_to_check = [
-            "https://cutshort.io/jobs/ios-developer-jobs",
-            "https://cutshort.io/jobs/swift-developer-jobs",
-        ]
+        seen_urls = set()
 
-        for url in urls_to_check:
+        for url in self.SEARCH_URLS:
             try:
                 resp = self.session.get(url, timeout=15)
                 if resp.status_code != 200:
                     continue
 
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup  = BeautifulSoup(resp.text, "html.parser")
 
-                # Cutshort renders job cards with consistent structure
-                cards = soup.find_all("div", class_=re.compile(r"job-card|JobCard|job_card", re.I))
-                if not cards:
-                    # Try generic card detection
-                    cards = soup.find_all("article") or soup.find_all("li", class_=re.compile(r"job", re.I))
+                # Cutshort job cards
+                cards = (
+                    soup.find_all("div", attrs={"data-test": re.compile(r"job|role", re.I)}) or
+                    soup.find_all(class_=re.compile(r"jobCard|job-card|JobCard", re.I)) or
+                    soup.find_all("article")
+                )
 
                 for card in cards[:20]:
                     text    = card.get_text(" ", strip=True)
-                    link    = card.find("a", href=True)
-                    href    = link["href"] if link else ""
+                    link_el = card.find("a", href=re.compile(r"/job/|/jobs/"))
+                    href    = link_el["href"] if link_el else ""
+                    full_url = f"https://cutshort.io{href}" if href.startswith("/") else href
 
                     if not any(kw in text.lower() for kw in IOS_ROLE_KEYWORDS + IOS_TECH_KEYWORDS):
                         continue
-
-                    full_url = f"https://cutshort.io{href}" if href.startswith("/") else href or url
+                    if full_url in seen_urls:
+                        continue
+                    seen_urls.add(full_url)
 
                     ios_jobs.append({
                         "company":    "",
-                        "role":       text[:100],
+                        "role":       text[:120],
                         "location":   "India",
                         "remote":     "Unknown",
                         "visa":       "Unknown",
                         "experience": "",
                         "tags":       "",
-                        "url":        full_url,
+                        "url":        full_url or url,
                         "description": text[:500],
                     })
 
+                time.sleep(1)
+
             except Exception as e:
-                print(f"[Cutshort] Scrape failed: {e}")
+                print(f"[Cutshort] {url} failed: {e}")
 
         return ios_jobs
-
-    def _should_exclude(self, text):
-        return any(kw in text for kw in EXCLUDE_KEYWORDS)
 
 
 if __name__ == "__main__":

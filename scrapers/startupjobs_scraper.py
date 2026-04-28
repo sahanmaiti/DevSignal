@@ -13,10 +13,10 @@ class StartupJobsScraper(BaseScraper):
     SOURCE_NAME = "Startup.jobs"
 
     RSS_FEEDS = [
-        "https://startup.jobs/feed?category=mobile&remote=true",
-        "https://startup.jobs/feed?q=iOS",
-        "https://startup.jobs/feed?q=Swift",
-    ]
+    "https://startup.jobs/mobile.rss",     # correct endpoint
+    "https://startup.jobs/ios.rss",
+    "https://startup.jobs/swift.rss",
+]
 
     def fetch_jobs(self) -> list[dict]:
         ios_jobs  = []

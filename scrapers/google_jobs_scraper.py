@@ -1,48 +1,40 @@
-# Google Jobs via Serper.dev /jobs API
+# scrapers/google_jobs_scraper.py
 #
-# WHY THIS MATTERS:
-#   Google indexes job listings from LinkedIn, Glassdoor, Indeed, ZipRecruiter,
-#   Monster, and hundreds of ATS systems (Greenhouse, Lever, Ashby) into a
-#   unified structured format. One Serper call returns jobs from all of them.
-#   This solves LinkedIn/Glassdoor/Indeed geo-blocking in one shot.
-#
-# QUOTA: Uses SERPER_API_KEY from .env
-#   Initial free tier: 2,500 searches
-#   Monthly after: 100/month free
-#   Strategy: run 4 targeted queries per pipeline run = 4 credits
-#
-# API: POST https://google.serper.dev/jobs
-# DOCS: https://serper.dev/docs (see "Jobs" section)
+# Google Jobs via Serper.dev
+# Uses /jobs endpoint first (returns structured individual job listings),
+# falls back to /search with strict filtering if /jobs returns nothing.
 
 import sys, os, re, time
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import requests
 from scrapers.base_scraper import BaseScraper
-from config.keywords import EXCLUDE_KEYWORDS
+from config.keywords import (
+    IOS_ROLE_KEYWORDS, IOS_TECH_KEYWORDS,
+    EXCLUDE_KEYWORDS, VISA_POSITIVE_PHRASES,
+)
 from config.settings import SERPER_API_KEY
 
 
 class GoogleJobsScraper(BaseScraper):
-    """
-    Scrapes Google's job listing aggregation via Serper.dev's /jobs endpoint.
-    Returns structured job data sourced from LinkedIn, Glassdoor, Indeed,
-    ZipRecruiter, Greenhouse, Lever, Ashby and many more.
-
-    This is the single most powerful scraper in the system — one call
-    returns jobs from platforms that individually block all scraping.
-    """
-
     SOURCE_NAME = "Google Jobs"
-    SERPER_URL  = "https://google.serper.dev/jobs"
+    SERPER_JOBS = "https://google.serper.dev/jobs"
+    SERPER_SEARCH = "https://google.serper.dev/search"
 
-    # Search queries — each targets a slightly different slice
-    # Keep to 4 queries max to be quota-conscious (4 credits per run)
+    # Job-specific search queries — used by /jobs endpoint
+    JOB_QUERIES = [
+        "iOS developer intern",
+        "Swift SwiftUI intern",
+        "junior iOS developer entry level",
+        "iOS internship remote",
+    ]
+
+    # For /search fallback — more specific to surface individual postings
     SEARCH_QUERIES = [
-        {"q": "iOS developer intern remote",        "location": "Worldwide"},
-        {"q": "Swift SwiftUI intern internship",     "location": "Worldwide"},
-        {"q": "junior iOS developer entry level",   "location": "Worldwide"},
-        {"q": "iOS intern internship mobile app",   "location": "India"},
+        'site:greenhouse.io OR site:lever.co OR site:ashbyhq.com "iOS" intern',
+        'site:jobs.ashbyhq.com OR site:boards.greenhouse.io "swift" OR "swiftui" intern',
+        '"iOS developer" OR "iOS engineer" internship apply now',
     ]
 
     def fetch_jobs(self) -> list[dict]:
@@ -50,124 +42,351 @@ class GoogleJobsScraper(BaseScraper):
             print("[GoogleJobs] SERPER_API_KEY not set — skipping")
             return []
 
-        ios_jobs  = []
-        seen_ids  = set()
-
         headers = {
             "X-API-KEY":    SERPER_API_KEY,
             "Content-Type": "application/json",
         }
 
-        for query in self.SEARCH_QUERIES:
+        # Try /jobs endpoint first — returns structured individual listings
+        ios_jobs = self._fetch_via_jobs_endpoint(headers)
+
+        # If /jobs returned nothing, fall back to targeted /search
+        if not ios_jobs:
+            ios_jobs = self._fetch_via_search_endpoint(headers)
+
+        return ios_jobs
+
+    def _fetch_via_jobs_endpoint(self, headers: dict) -> list[dict]:
+        """
+        Serper /jobs endpoint returns structured individual job listings.
+        This is the cleanest approach — no category page filtering needed.
+        """
+        ios_jobs = []
+        seen_keys = set()
+
+        for query in self.JOB_QUERIES:
             try:
                 resp = requests.post(
-                    self.SERPER_URL,
+                    self.SERPER_JOBS,
                     headers=headers,
                     json={
-                        "q":          query["q"],
-                        "location":   query.get("location", "Worldwide"),
-                        "num":        10,      # max per query
-                        "gl":         "us",    # Google country
-                        "hl":         "en",
+                        "q":        query,
+                        "num":      10,
+                        "gl":       "us",
+                        "hl":       "en",
+                        "location": "Worldwide",
                     },
                     timeout=15,
                 )
+
+                # /jobs endpoint may return 403 on some plans — fall through
+                if resp.status_code == 403:
+                    print(
+                        "[GoogleJobs] /jobs endpoint not available on this plan — will use /search")
+                    return []
+
                 resp.raise_for_status()
-                jobs_data = resp.json().get("jobs", [])
+                data = resp.json()
 
-                for job in jobs_data:
-                    # Build a dedup key from title + company
-                    title   = job.get("title", "")
-                    company = job.get("companyName", "")
-                    dedup   = f"{title.lower()}|{company.lower()}"
+                for job in data.get("jobs", []):
+                    title = job.get("title", "")
+                    link = job.get("link", "")
+                    desc = job.get("description", "")
+                    company = job.get("companyName", "") or self._extract_company(title, desc, link)
 
-                    if dedup in seen_ids:
+                    # Skip if it looks like a category page, not a job
+                    if self._is_category_page(title, link):
                         continue
-                    seen_ids.add(dedup)
-
                     if self._should_exclude(title.lower()):
                         continue
 
-                    # Extract structured fields from Google Jobs data
-                    location    = job.get("location", "")
-                    posted_date = job.get("detected_extensions", {}).get("posted_at", "")
-                    salary      = job.get("detected_extensions", {}).get("salary", "")
-                    work_type   = job.get("detected_extensions", {}).get("work_from_home", False)
-                    description = job.get("description", "")
+                    dedup = link.lower().replace("http://", "https://").rstrip("/")
+                    if dedup in seen_keys:
+                        continue
+                    seen_keys.add(dedup)
 
-                    # Source attribution — Google tells us where the job came from
-                    apply_options = job.get("apply_options", [])
-                    apply_link    = apply_options[0].get("link", "") if apply_options else ""
-                    job_source_site = apply_options[0].get("title", "Google Jobs") if apply_options else "Google Jobs"
-
-                    # Detect remote from location and work_type flag
-                    remote = "Yes" if (
-                        work_type or
-                        "remote" in location.lower() or
-                        "remote" in title.lower() or
-                        "remote" in description.lower()[:200]
-                    ) else "Unknown"
+                    ext = job.get("detected_extensions", {})
+                    desc = job.get("description", "")
+                    loc = job.get("location", "")
 
                     ios_jobs.append({
                         "company":    company,
                         "role":       title,
-                        "location":   location,
-                        "remote":     remote,
-                        "visa":       self._detect_visa(description),
-                        "experience": self._extract_experience(description),
-                        "tags":       self._extract_tags(description + " " + title),
-                        "url":        apply_link or f"https://www.google.com/search?q={title}+{company}+jobs",
-                        "description": description[:800],
-                        "salary":     salary,
-                        "via":        job_source_site,   # "via LinkedIn", "via Glassdoor" etc.
+                        "location":   loc,
+                        "remote":     "Yes" if (
+                            ext.get("work_from_home") or
+                            "remote" in loc.lower() or
+                            "remote" in desc.lower()[:200]
+                        ) else "Unknown",
+                        "visa":       self._detect_visa(desc),
+                        "experience": ext.get("qualifications", "")[:100],
+                        "tags":       self._extract_tags(title + " " + desc),
+                        "url":        link,
+                        "description": desc[:800],
+                        "salary":     ext.get("salary", ""),
                     })
 
-                time.sleep(0.3)   # brief pause between queries
+                time.sleep(0.3)
 
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 401:
-                    print("[GoogleJobs] Invalid Serper API key")
+                code = e.response.status_code
+                if code == 403:
+                    return []   # fall through to /search
+                if code in (401, 429):
+                    print(f"[GoogleJobs] /jobs HTTP {code}")
                     break
-                elif e.response.status_code == 429:
-                    print("[GoogleJobs] Serper rate limit — quota may be exhausted")
-                    break
-                print(f"[GoogleJobs] Query '{query['q']}' failed: {e}")
-
             except Exception as e:
-                print(f"[GoogleJobs] Query '{query['q']}' error: {e}")
+                print(f"[GoogleJobs] /jobs error: {e}")
 
         return ios_jobs
 
-    def _should_exclude(self, text):
+    def _fetch_via_search_endpoint(self, headers: dict) -> list[dict]:
+        """
+        Fallback: uses /search with queries targeting known ATS domains
+        (Greenhouse, Lever, Ashby) that serve individual job postings,
+        not category pages.
+        """
+        ios_jobs = []
+        seen_keys = set()
+
+        for query in self.SEARCH_QUERIES:
+            try:
+                resp = requests.post(
+                    self.SERPER_SEARCH,
+                    headers=headers,
+                    json={"q": query, "num": 10},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                for result in data.get("organic", []):
+                    title = result.get("title", "")
+                    snippet = result.get("snippet", "")
+                    link = result.get("link", "")
+
+                    # Hard reject: category/search pages
+                    if self._is_category_page(title, link):
+                        continue
+
+                    # Must be an individual ATS job posting
+                    if not self._is_individual_posting(link):
+                        continue
+
+                    searchable = (title + " " + snippet).lower()
+                    if not self._is_ios_relevant(searchable):
+                        continue
+                    if self._should_exclude(title.lower()):
+                        continue
+
+                    dedup = f"{title.lower()[:40]}|{link[:50]}"
+                    if dedup in seen_keys:
+                        continue
+                    seen_keys.add(dedup)
+
+                    ios_jobs.append({
+                        "company":    self._extract_company(title, snippet),
+                        "role":       self._clean_title(title),
+                        "location":   self._extract_location(snippet),
+                        "remote":     "Yes" if "remote" in searchable else "Unknown",
+                        "visa":       self._detect_visa(snippet),
+                        "experience": self._extract_experience(snippet),
+                        "tags":       self._extract_tags(searchable),
+                        "url":        link,
+                        "description": snippet[:800],
+                    })
+
+                time.sleep(0.3)
+
+            except Exception as e:
+                print(f"[GoogleJobs] /search error: {e}")
+
+        return ios_jobs
+
+    # ── Filters ──────────────────────────────────────────────────────────
+
+    def _is_category_page(self, title: str, url: str) -> bool:
+        """
+        Returns True if this result is a job-board category/search page,
+        not an individual job posting.
+
+        Patterns that indicate a category page:
+        - Title starts with a number: "120 iOS Internship Jobs in..."
+        - Title contains "jobs in [location]": "iOS jobs in New York"
+        - URL is a search results page, not a job detail page
+        """
+        title_lower = title.lower()
+
+        # Title patterns for category pages
+        CATEGORY_TITLE_PATTERNS = [
+            r'^\d+\s+\w+\s+jobs',        # "120 iOS Internship Jobs..."
+            r'\d+\s+jobs?\s+in\b',       # "106 Internship Swift jobs in..."
+            r'jobs?\s+in\s+[a-z]',       # "jobs in United States"
+            r'now hiring\)',              # "(NOW HIRING)"
+            r'\$\d+.{0,15}/hr',          # "$12-$135/hr Swiftui..."
+            r'^\d+\s+remote',            # "50 Remote iOS Jobs"
+            r'flexible\s+\w+\s+jobs',    # "Flexible Ios Swift Developer Jobs"
+        ]
+        for pattern in CATEGORY_TITLE_PATTERNS:
+            if re.search(pattern, title_lower):
+                return True
+
+        # URL patterns for category/search pages
+        CATEGORY_URL_PATTERNS = [
+            # linkedin.com/jobs/ios-internship-jobs
+            r'/jobs/[a-z-]+-jobs/?$',
+            r'/jobs/internship-[a-z-]+-jobs',  # ziprecruiter category
+            r'/Jobs/[A-Z][a-z-]+/?$',          # ZipRecruiter search
+            r'q-[a-z-]+-jobs\.htm',            # Indeed search URL
+            r'\?.*q=',                          # search query params
+            r'/jobs/search',                    # explicit search endpoint
+            r'/remote-jobs/?$',                 # category listing pages
+            r'/jobs/?$',                        # bare jobs listing
+        ]
+        for pattern in CATEGORY_URL_PATTERNS:
+            if re.search(pattern, url, re.I):
+                return True
+
+        return False
+
+    def _is_individual_posting(self, url: str) -> bool:
+        """
+        Returns True only if the URL looks like an individual job posting
+        rather than a search results page.
+        """
+        INDIVIDUAL_PATTERNS = [
+            r'greenhouse\.io/\w+/jobs/\d+',     # boards.greenhouse.io/company/jobs/123
+            r'lever\.co/[\w-]+/[\w-]+',          # jobs.lever.co/company/uuid
+            r'ashbyhq\.com/[\w-]+/\d+',          # app.ashbyhq.com/company/123
+            r'workable\.com/[\w-]+/j/[\w]+',     # workable job
+            r'smartrecruiters\.com/.+/\d+',
+            r'jobvite\.com/[a-z0-9]+',
+            r'careers\.[a-z]+\.com/job',
+            r'/job/\d+',                          # generic job ID in URL
+            r'/jobs/\d+',                         # job ID
+            r'/position/[\w-]+',
+            r'apply\.',
+            r'/apply/',
+        ]
+        return any(re.search(p, url, re.I) for p in INDIVIDUAL_PATTERNS)
+
+    # ── Helpers ───────────────────────────────────────────────────────────
+
+    def _is_ios_relevant(self, text: str) -> bool:
+        text = text.lower()
+
+        must_have = [
+            "ios",
+            "swift",
+            "swiftui",
+            "uikit",
+            "iphone",
+            "xcode",
+        ]
+
+        return any(k in text for k in must_have)
+
+    def _should_exclude(self, text: str) -> bool:
         return any(kw in text for kw in EXCLUDE_KEYWORDS)
 
-    def _detect_visa(self, text):
-        from config.keywords import VISA_POSITIVE_PHRASES
+    def _clean_title(self, title: str) -> str:
+        title = title.strip()
+
+        # Lever format:
+        # iOS Engineer Intern - Match Group - Lever
+        if title.endswith(" - Lever"):
+            title = title.replace(" - Lever", "")
+            parts = title.split(" - ")
+            return parts[0].strip()
+
+        # Greenhouse format:
+        # Job Application for iOS Engineer at Robinhood
+        if title.startswith("Job Application for "):
+            title = title.replace("Job Application for ", "")
+            if " at " in title:
+                title = title.split(" at ")[0]
+            return title.strip()
+
+        # Ashby format:
+        # Software Engineer Intern @ Company
+        if " @ " in title:
+            title = title.split(" @ ")[0]
+
+        return title[:180].strip()
+
+    def _extract_company(self, title: str, snippet: str, url: str = "") -> str:
+
+        if " - Lever" in title:
+            parts = title.replace(" - Lever", "").split(" - ")
+            if len(parts) >= 2:
+                return parts[1].strip()
+
+        if "Job Application for " in title and " at " in title:
+            return title.split(" at ")[-1].strip()
+
+        if " @ " in title:
+            return title.split(" @ ")[-1].strip()
+
+        if "greenhouse.io/" in url:
+            m = re.search(r'greenhouse\.io/([^/]+)/jobs', url)
+            if m:
+                return m.group(1).replace("-", " ").title()
+
+        if "job-boards.greenhouse.io/" in url:
+            m = re.search(r'greenhouse\.io/([^/]+)/jobs', url)
+            if m:
+                return m.group(1).replace("-", " ").title()
+
+        if "lever.co/" in url:
+            m = re.search(r'lever\.co/([^/]+)/', url)
+            if m:
+                return m.group(1).replace("-", " ").title()
+
+        return ""
+
+    def _extract_location(self, text: str) -> str:
+        t = text.lower()
+
+        if "remote" in t:
+            return "Remote"
+
+        patterns = [
+            r'(new york,\s*ny)',
+            r'(san francisco,\s*ca)',
+            r'(toronto,\s*on)',
+            r'(london)',
+            r'(canada)',
+            r'(united states)',
+            r'(usa)',
+        ]
+
+        for p in patterns:
+            m = re.search(p, t, re.I)
+            if m:
+                return m.group(1).title()
+
+        return ""
+
+    def _detect_visa(self, text: str) -> str:
         text_lower = text.lower()
-        for phrase in VISA_POSITIVE_PHRASES:
-            if phrase in text_lower:
+        for p in VISA_POSITIVE_PHRASES:
+            if p in text_lower:
                 return "Yes"
-        if any(p in text_lower for p in ["no visa", "cannot sponsor", "citizens only"]):
-            return "No"
         return "Unknown"
 
-    def _extract_experience(self, text):
-        match = re.search(r'(\d+\+?\s*(?:–|-|to)?\s*\d*\+?\s*years?(?:\s+of\s+experience)?)',
-                        text, re.IGNORECASE)
-        return match.group(1).strip() if match else ""
+    def _extract_experience(self, text: str) -> str:
+        m = re.search(r'(\d+\+?\s*(?:–|-|to)?\s*\d*\+?\s*years?)', text, re.I)
+        return m.group(1).strip() if m else ""
 
-    def _extract_tags(self, text):
-        from config.keywords import IOS_TECH_KEYWORDS
-        found = [kw for kw in IOS_TECH_KEYWORDS if kw in text.lower()]
-        return ", ".join(found[:8])
+    def _extract_tags(self, text: str) -> str:
+        return ", ".join(kw for kw in IOS_TECH_KEYWORDS if kw in text.lower())[:100]
 
 
 if __name__ == "__main__":
     jobs = GoogleJobsScraper().run()
-    print(f"\nFound {len(jobs)} iOS jobs via Google Jobs")
+    total = len(jobs)
+    print(f"\nFound {total} individual iOS job postings via Google Jobs")
     for j in jobs[:5]:
-        print(f"  {j['company']} — {j['role']}")
-        print(f"    Location: {j['location']} | Remote: {j['remote']}")
-        print(f"    Via: {j.get('via', '?')}")
-        print(f"    Link: {j['apply_link'][:60]}")
-        print()
+        print(f"\n  {j['company'] or '?'} — {j['role'][:55]}")
+        print(f"  Location: {j['location']} | Remote: {j['remote']}")
+        print(f"  URL: {j['apply_link'][:70]}")
