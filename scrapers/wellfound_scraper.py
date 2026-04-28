@@ -1,10 +1,13 @@
-# Wellfound (formerly AngelList) — startup job board
-# Uses their public search — no auth required for browsing
+import sys
+import os
+import time
+import random
 
-import sys, os, re, time, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import requests
+from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+
 from scrapers.base_scraper import BaseScraper
 from config.keywords import IOS_ROLE_KEYWORDS, IOS_TECH_KEYWORDS, EXCLUDE_KEYWORDS
 
@@ -12,145 +15,249 @@ from config.keywords import IOS_ROLE_KEYWORDS, IOS_TECH_KEYWORDS, EXCLUDE_KEYWOR
 class WellfoundScraper(BaseScraper):
     SOURCE_NAME = "Wellfound"
 
-    # Wellfound's internal API (used by their own frontend)
-    SEARCH_URL = "https://wellfound.com/api/v1/jobs_search"
-
-    # Fallback: their public talent search page
-    TALENT_URL = "https://wellfound.com/role/r/ios-engineer"
+    SEARCH_PAGES = [
+        "https://wellfound.com/role/r/ios-engineer",
+        "https://wellfound.com/role/r/mobile-engineer?q=swift",
+        "https://wellfound.com/jobs",
+    ]
 
     def fetch_jobs(self) -> list[dict]:
-        # Try the API approach first
-        jobs = self._fetch_via_api()
-        if jobs:
-            return jobs
-        # Fall back to scraping the talent page
-        return self._fetch_via_scrape()
-
-    def _fetch_via_api(self) -> list[dict]:
-        """Attempts to use Wellfound's internal JSON API."""
-        headers = {
-            **self.session.headers,
-            "Accept": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-
-        search_terms = ["iOS intern", "Swift intern", "SwiftUI developer intern"]
-        ios_jobs = []
+        jobs = []
         seen_urls = set()
 
-        for term in search_terms:
-            try:
-                resp = self.session.get(
-                    self.SEARCH_URL,
-                    headers=headers,
-                    params={
-                        "q":      term,
-                        "type":   "jobs",
-                        "page":   1,
-                    },
-                    timeout=10,
-                )
-                if resp.status_code != 200:
-                    return []   # API not available, use scrape
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                ],
+            )
 
-                data = resp.json()
-                jobs = data.get("jobs", data.get("startupRoles", []))
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1440, "height": 900},
+                locale="en-US",
+            )
 
-                for job in jobs:
-                    title   = job.get("title", job.get("role", ""))
-                    company = job.get("startup", {}).get("name", job.get("companyName", ""))
-                    url     = job.get("jobUrl", job.get("url", ""))
+            page = context.new_page()
 
-                    if not url or url in seen_urls:
-                        continue
-                    seen_urls.add(url)
+            # Reduce automation fingerprint
+            page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """)
 
-                    searchable = (title + " " + str(job.get("skills", ""))).lower()
+            for url in self.SEARCH_PAGES:
+                try:
+                    print(f"[Wellfound] Opening {url}")
 
-                    # Keep only iOS / Swift relevant roles
-                    if not any(kw in searchable for kw in IOS_ROLE_KEYWORDS + IOS_TECH_KEYWORDS):
-                        continue
+                    page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                    page.wait_for_timeout(random.randint(2500, 4500))
 
-                    # Remove unwanted roles
-                    if self._should_exclude(title.lower()):
-                        continue
+                    self._human_scroll(page)
 
-                    ios_jobs.append({
-                        "company":    company,
-                        "role":       title,
-                        "location":   job.get("locationNames", [""])[0] if job.get("locationNames") else "",
-                        "remote":     "Yes" if job.get("remote") else "Unknown",
-                        "visa":       "Yes" if job.get("visaSponsorshipOffered") else "Unknown",
-                        "experience": f"{job.get('minExperience', '')}-{job.get('maxExperience', '')} years".strip("-"),
-                        "tags":       ", ".join(str(s) for s in job.get("skills", [])[:8]),
-                        "url":        f"https://wellfound.com{url}" if url.startswith("/") else url,
-                        "description": job.get("description", "")[:800],
-                    })
+                    html = page.content()
 
-            except Exception as e:
-                print(f"[Wellfound API] {term} failed: {e}")
-            continue   # silently fall through to scrape method
+                    with open("wellfound_debug.html", "w", encoding="utf-8") as f:
+                        f.write(html)
 
-        return ios_jobs
+                    print("Saved debug HTML")
 
-    def _fetch_via_scrape(self) -> list[dict]:
-        """Scrapes the Wellfound talent pages for iOS roles."""
-        from bs4 import BeautifulSoup
+                    # Try to wait for likely job anchors
+                    try:
+                        page.wait_for_selector("a[href*='/jobs/']", timeout=8000)
+                    except PlaywrightTimeoutError:
+                        pass
 
-        ios_jobs  = []
-        pages_to_scrape = [
-            "https://wellfound.com/role/r/ios-engineer",
-            "https://wellfound.com/role/r/mobile-engineer",
+                    html = page.content()
+                    soup = BeautifulSoup(html, "html.parser")
+
+                    page_jobs = self._extract_jobs_from_soup(soup, seen_urls)
+
+                    print(f"[Wellfound] Found {len(page_jobs)} jobs on page")
+                    jobs.extend(page_jobs)
+
+                    time.sleep(random.uniform(1.0, 2.5))
+
+                except Exception as e:
+                    print(f"[Wellfound] Failed {url}: {e}")
+
+            browser.close()
+
+        return jobs
+
+    def _human_scroll(self, page):
+        for _ in range(5):
+            page.mouse.wheel(0, random.randint(700, 1400))
+            page.wait_for_timeout(random.randint(800, 1600))
+
+    def _extract_jobs_from_soup(self, soup, seen_urls):
+        jobs = []
+
+        selectors = [
+            "a[href*='/jobs/']",
+            "a[href*='/job/']",
+            "a[href*='/l/']",
+            "[data-test*='job'] a",
+            "a",
         ]
 
-        for url in pages_to_scrape:
+        links = []
+        for selector in selectors:
+            links = soup.select(selector)
+            if links:
+                break
+
+        for link in links[:150]:
             try:
-                resp = self.session.get(url, timeout=15)
-                if resp.status_code != 200:
+                href = link.get("href", "").strip()
+                text = link.get_text(" ", strip=True)
+
+                if not href or len(text) < 5:
                     continue
 
-                soup = BeautifulSoup(resp.text, "html.parser")
+                full_url = self._normalize_url(href)
 
-                # Find job listing cards — Wellfound uses data-test attributes
-                job_cards = soup.find_all("div", attrs={"data-test": "StartupResult"})
-                if not job_cards:
-                    job_cards = soup.find_all("div", class_=re.compile(r"job|role|startup", re.I))
+                if not full_url or full_url in seen_urls:
+                    continue
 
-                for card in job_cards[:20]:
-                    text = card.get_text(" ", strip=True)
-                    if not any(kw in text.lower() for kw in IOS_ROLE_KEYWORDS + IOS_TECH_KEYWORDS):
-                        continue
+                parent = link.find_parent(["div", "li", "article", "section"])
+                context = parent.get_text(" ", strip=True) if parent else text
 
-                    # Extract what we can from the card text
-                    link = card.find("a", href=True)
-                    href = link["href"] if link else ""
-                    full_url = f"https://wellfound.com{href}" if href.startswith("/") else href
+                searchable = f"{text} {context}".lower()
 
-                    ios_jobs.append({
-                        "company":    "",
-                        "role":       text[:100],
-                        "location":   "See post",
-                        "remote":     "Unknown",
-                        "visa":       "Unknown",
-                        "experience": "",
-                        "tags":       "",
-                        "url":        full_url or url,
-                        "description": text[:500],
-                    })
+                if not self._is_ios_relevant(searchable):
+                    continue
 
-                time.sleep(1)
+                if any(bad in searchable for bad in EXCLUDE_KEYWORDS):
+                    continue
 
-            except Exception as e:
-                print(f"[Wellfound] Scrape failed for {url}: {e}")
+                seen_urls.add(full_url)
 
-        return ios_jobs
+                company = self._extract_company(context)
+                role = self._extract_role(text, context)
 
-    def _should_exclude(self, text):
-        return any(kw in text for kw in EXCLUDE_KEYWORDS)
+                jobs.append({
+                    "company": company,
+                    "role": role,
+                    "location": self._extract_location(context),
+                    "remote": self._extract_remote(context),
+                    "visa": "Unknown",
+                    "experience": self._extract_experience(context),
+                    "tags": self._extract_tags(searchable),
+                    "url": full_url,
+                    "description": context[:700],
+                })
+
+            except Exception:
+                continue
+
+        return jobs
+
+    def _normalize_url(self, href):
+        if href.startswith("/"):
+            return f"https://wellfound.com{href}"
+        if href.startswith("http"):
+            return href
+        return ""
+
+    def _is_ios_relevant(self, text):
+        role_hit = any(k in text for k in IOS_ROLE_KEYWORDS)
+        tech_hit = any(k in text for k in IOS_TECH_KEYWORDS)
+        return role_hit or tech_hit
+
+    def _extract_company(self, text):
+        patterns = [
+            " · ",
+            " at ",
+            " is hiring",
+            " hiring ",
+        ]
+
+        for p in patterns:
+            if p in text.lower():
+                parts = text.split(p, 1)
+                if len(parts) > 1:
+                    return parts[-1].strip()[:100]
+
+        words = text.split()
+        if len(words) > 2:
+            return " ".join(words[:2])[:100]
+
+        return ""
+
+    def _extract_role(self, text, context):
+        role_words = [
+            "ios", "iphone", "ipad", "swift", "mobile",
+            "engineer", "developer", "lead", "senior",
+            "staff", "architect"
+        ]
+
+        candidate = text if len(text) > 5 else context[:150]
+        candidate_lower = candidate.lower()
+
+        if any(w in candidate_lower for w in role_words):
+            return candidate[:150]
+
+        return text[:150]
+
+    def _extract_location(self, text):
+        lower = text.lower()
+
+        if "remote" in lower:
+            return "Remote"
+
+        common = [
+            "san francisco", "new york", "london", "berlin",
+            "india", "usa", "canada", "singapore"
+        ]
+
+        for city in common:
+            if city in lower:
+                return city.title()
+
+        return "See post"
+
+    def _extract_remote(self, text):
+        return "Yes" if "remote" in text.lower() else "Unknown"
+
+    def _extract_experience(self, text):
+        lower = text.lower()
+
+        for yr in range(1, 11):
+            if f"{yr} year" in lower or f"{yr}+ year" in lower:
+                return f"{yr}+ years"
+
+        if "senior" in lower:
+            return "Senior"
+        if "staff" in lower:
+            return "Staff"
+        if "lead" in lower:
+            return "Lead"
+
+        return ""
+
+    def _extract_tags(self, text):
+        tags = [kw for kw in IOS_TECH_KEYWORDS if kw in text]
+        return ", ".join(tags[:8])
+
 
 
 if __name__ == "__main__":
     jobs = WellfoundScraper().run()
+
     print(f"Found {len(jobs)} iOS jobs on Wellfound")
-    for j in jobs[:3]:
-        print(f"  {j['company'] or '?'} — {j['role'][:60]}")
+
+    for job in jobs[:10]:
+        print(
+            f"{job['company'] or '?'} | "
+            f"{job['role'][:60]} | "
+            f"{job['location']} | "
+            f"{job['url']}"
+        )

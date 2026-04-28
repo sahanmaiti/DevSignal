@@ -1,10 +1,9 @@
-# Naukri.com — India's largest job board
-# Important for finding Indian startup internships and entry-level iOS roles
-# Uses their public search API (same endpoint the website uses)
+# scrapers/naukri_scraper.py — fixed headers + proper HTML fallback
 
-import sys, os, re, json
+import sys, os, re, json, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from bs4 import BeautifulSoup
 from scrapers.base_scraper import BaseScraper
 from config.keywords import EXCLUDE_KEYWORDS
 
@@ -12,147 +11,105 @@ from config.keywords import EXCLUDE_KEYWORDS
 class NaukriScraper(BaseScraper):
     SOURCE_NAME = "Naukri"
 
-    # Naukri's internal search API — same one their website calls
-    API_URL = "https://www.naukri.com/jobapi/v3/search"
-
     SEARCH_QUERIES = [
-        "iOS developer fresher",
-        "iOS intern swift",
-        "junior iOS developer",
+        ("iOS developer fresher",  "ios-developer-jobs-in-india?experience=0"),
+        ("iOS intern swift",       "ios-intern-jobs?experience=0"),
+        ("junior iOS developer",   "junior-ios-developer-jobs?experience=0"),
     ]
 
     def fetch_jobs(self) -> list[dict]:
-        ios_jobs  = []
-        seen_ids  = set()
+        all_jobs = []
+        for query_text, url_slug in self.SEARCH_QUERIES:
+            jobs = self._scrape_search_page(url_slug, query_text)
+            all_jobs.extend(jobs)
+            time.sleep(2)   # Naukri rate-limits aggressively
 
-        # Naukri requires specific headers to appear as the website
+        # Deduplicate
+        seen, unique = set(), []
+        for j in all_jobs:
+            if j["url"] not in seen:
+                seen.add(j["url"])
+                unique.append(j)
+        return unique
+
+    def _scrape_search_page(self, url_slug: str, query: str) -> list[dict]:
+        """Scrapes Naukri search results page."""
+        url = f"https://www.naukri.com/{url_slug}"
+
+        # Naukri needs these headers to return HTML instead of a redirect
         headers = {
             **self.session.headers,
-            "appid":       "109",
-            "systemid":    "109",
-            "Accept":      "application/json",
-            "Content-Type": "application/json",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
         }
 
-        for query in self.SEARCH_QUERIES:
-            try:
-                resp = self.session.get(
-                    self.API_URL,
-                    headers=headers,
-                    params={
-                        "noOfResults":  20,
-                        "urlType":      "search_by_keyword",
-                        "searchType":   "adv",
-                        "keyword":      query,
-                        "location":     "",   # all India
-                        "jobAge":       7,    # last 7 days
-                        "experience":   0,
-                        "salary":       0,
-                        "industryId":   "",
-                        "functionalAreaId": "",
-                    },
-                    timeout=15,
-                )
-
-                if resp.status_code != 200:
-                    # Fallback to HTML scraping
-                    jobs = self._scrape_html(query)
-                    ios_jobs.extend(jobs)
-                    continue
-
-                data = resp.json()
-                jobs_list = data.get("jobDetails", [])
-
-                for job in jobs_list:
-                    job_id = str(job.get("jobId", ""))
-                    if job_id in seen_ids:
-                        continue
-                    seen_ids.add(job_id)
-
-                    title    = job.get("title", "")
-                    company  = job.get("companyName", "")
-                    location = job.get("placeholders", [{}])[0].get("label", "India") \
-                            if job.get("placeholders") else "India"
-
-                    if self._should_exclude(title.lower()):
-                        continue
-
-                    # Naukri experience format: "0-1 Yrs", "Fresher"
-                    exp_min = job.get("minimumExperience", 0)
-                    exp_max = job.get("maximumExperience", 0)
-                    exp_str = f"{exp_min}-{exp_max} years" if exp_max else "Fresher"
-
-                    # Salary from Naukri
-                    salary_detail = job.get("placeholders", [])
-                    salary = ""
-                    for p in salary_detail:
-                        if "lakh" in p.get("label", "").lower() or "lpa" in p.get("label", "").lower():
-                            salary = p.get("label", "")
-                            break
-
-                    ios_jobs.append({
-                        "company":    company,
-                        "role":       title,
-                        "location":   location,
-                        "remote":     "Unknown",
-                        "visa":       "Unknown",
-                        "experience": exp_str,
-                        "tags":       ", ".join(job.get("tagsAndSkills", "").split(",")[:6]),
-                        "url":        f"https://www.naukri.com{job.get('jdURL', '')}",
-                        "description": job.get("jobDescription", "")[:800],
-                        "salary":     salary,
-                    })
-
-            except Exception as e:
-                print(f"[Naukri] Query '{query}' failed: {e}")
-
-        return ios_jobs
-
-    def _scrape_html(self, query: str) -> list[dict]:
-        """HTML fallback when the API returns unexpected responses."""
-        from bs4 import BeautifulSoup
-
         try:
-            url  = f"https://www.naukri.com/{query.replace(' ', '-')}-jobs"
-            resp = self.session.get(url, timeout=15)
+            resp = self.session.get(url, headers=headers, timeout=20)
             if resp.status_code != 200:
                 return []
 
             soup  = BeautifulSoup(resp.text, "html.parser")
-            cards = soup.find_all("article", class_=re.compile(r"jobTuple|job-tuple|jobCard", re.I))
+            cards = (
+                soup.find_all("article", class_=re.compile(r"jobTuple|jobCard", re.I)) or
+                soup.find_all("div", class_=re.compile(r"jobTuple|job-tuple|srp-jobtuple", re.I)) or
+                soup.find_all(attrs={"data-job-id": True})
+            )
 
             jobs = []
             for card in cards[:15]:
-                title_el   = card.find(["h2", "a"], class_=re.compile(r"title|jobTitle", re.I))
-                company_el = card.find(class_=re.compile(r"companyInfo|company", re.I))
-                link_el    = card.find("a", href=True)
-
-                title   = title_el.get_text(strip=True) if title_el else ""
-                company = company_el.get_text(strip=True) if company_el else ""
-                url     = link_el["href"] if link_el else ""
-
-                if not title or self._should_exclude(title.lower()):
+                # Title
+                title_el = (
+                    card.find(class_=re.compile(r"title|jobTitle|designation", re.I)) or
+                    card.find(["h2", "h3"])
+                )
+                title = title_el.get_text(strip=True) if title_el else ""
+                if not title or any(kw in title.lower() for kw in EXCLUDE_KEYWORDS):
                     continue
 
+                # Check for iOS relevance in the card text
+                card_text = card.get_text(" ", strip=True).lower()
+                if not any(kw in card_text for kw in ["ios", "swift", "swiftui", "iphone"]):
+                    continue
+
+                # Company
+                company_el = card.find(class_=re.compile(r"company|companyInfo|comp-name", re.I))
+                company    = company_el.get_text(strip=True) if company_el else ""
+
+                # Location
+                loc_el   = card.find(class_=re.compile(r"location|loc|place", re.I))
+                location = loc_el.get_text(strip=True) if loc_el else "India"
+
+                # Experience
+                exp_el = card.find(class_=re.compile(r"exp|experience", re.I))
+                exp    = exp_el.get_text(strip=True) if exp_el else ""
+
+                # Job URL
+                link_el = card.find("a", href=re.compile(r"naukri.com/job"))
+                job_url = link_el["href"] if link_el else url
+
                 jobs.append({
-                    "company":    company,
+                    "company":    company[:200],
                     "role":       title,
-                    "location":   "India",
-                    "remote":     "Unknown",
+                    "location":   location[:200],
+                    "remote":     "Yes" if "remote" in card_text else "Unknown",
                     "visa":       "Unknown",
-                    "experience": "",
-                    "tags":       "",
-                    "url":        url,
-                    "description": card.get_text(" ", strip=True)[:500],
+                    "experience": exp[:100],
+                    "tags":       ", ".join(
+                        kw for kw in ["swift", "swiftui", "ios", "uikit", "xcode"]
+                        if kw in card_text
+                    ),
+                    "url":        job_url,
+                    "description": card_text[:500],
                 })
 
             return jobs
 
-        except Exception:
+        except Exception as e:
+            print(f"[Naukri] {query} failed: {e}")
             return []
-
-    def _should_exclude(self, text):
-        return any(kw in text for kw in EXCLUDE_KEYWORDS)
 
 
 if __name__ == "__main__":
