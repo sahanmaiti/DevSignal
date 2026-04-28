@@ -76,6 +76,8 @@ class ArcScraper(BaseScraper):
                     tag_els = card.find_all(class_=re.compile(r"tag|skill|badge|tech", re.I))
                     tags    = ", ".join(el.get_text(strip=True) for el in tag_els[:8])
 
+                    company = company.strip() if company else "Arc Client"
+                    
                     ios_jobs.append({
                         "company":    company[:200],
                         "role":       title,
