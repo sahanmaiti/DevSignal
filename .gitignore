@@ -37,3 +37,4 @@ build/
 # n8n exports (we'll add these manually when needed)
 # n8n/workflows/*.json.hunter_cache.json
 .streamlit/secrets.toml
+wellfound_debug.html
