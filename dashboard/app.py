@@ -36,8 +36,9 @@ with st.sidebar:
     st.divider()
     st.caption("Refreshes every 5 min")
     st.caption("Built with Python + Groq + n8n")
-    if st.button("Refresh data"):
-        st.cache_data.clear()
+    if st.button("↻  Refresh data", use_container_width=True):
+        from dashboard.db import clear_all_caches
+        clear_all_caches()
         st.rerun()
 
 # Default landing page shows Overview

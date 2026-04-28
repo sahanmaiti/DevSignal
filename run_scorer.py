@@ -1,66 +1,93 @@
 # run_scorer.py
 #
-# PURPOSE:
-#   Standalone script that scores all unscored jobs in the database.
+# Scores unscored jobs AND generates outreach messages.
 #
-#   Run this:
-#   1. Once now to score the 44 existing jobs from Phase 3
-#   2. Automatically after each scrape run going forward
-#      (wired into run_scraper.py in Step 17)
-#
-# RATE LIMITING:
-#   Groq free tier: 30 RPM.
-#   We use 2-second delays between calls = 30/min max.
-#   44 jobs × 2 calls each (classifier + scorer) × 2s = ~3 minutes total.
-#
-# USAGE:
-#   python run_scorer.py
-#   python run_scorer.py --limit 10   (score only 10 jobs, for testing)
-#
-# PLACEMENT: project root
+# MODES:
+#   python run_scorer.py                  # score all unscored jobs
+#   python run_scorer.py --limit 5        # score only 5 (testing)
+#   python run_scorer.py --outreach-only  # regenerate outreach for scored jobs missing it
+#   python run_scorer.py --all            # re-score everything from scratch
 
-import sys
-import os
-import time
-import argparse
-
+import sys, os, time, argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from storage.db_client           import db
-from ai.ios_classifier           import IOSClassifier
-from ai.scorer                   import OpportunityScorer
-from ai.outreach_generator       import OutreachGenerator
-from notifications.telegram_bot  import send_high_score_alert
-from config.settings             import HIGH_SCORE_ALERT_THRESHOLD
+from storage.db_client          import db
+from ai.ios_classifier          import IOSClassifier
+from ai.scorer                  import OpportunityScorer
+from ai.outreach_generator      import OutreachGenerator
+from notifications.telegram_bot import send_high_score_alert
+from config.settings            import HIGH_SCORE_ALERT_THRESHOLD, GROQ_API_KEY
+from sqlalchemy                 import create_engine, text
+from config.settings            import DATABASE_URL
 
 
 def print_line(char="─", width=60):
     print(char * width)
 
 
-def main(limit: int = None):
-    print()
-    print_line("═")
-    print("  DevSignal — AI Scorer")
-    print_line("═")
+def get_jobs_missing_outreach() -> list:
+    """
+    Returns scored jobs that have no outreach message.
+    Used by --outreach-only mode.
+    """
+    sql = text("""
+        SELECT id, company, role, location, remote,
+               visa_sponsorship, experience_req, tech_stack,
+               description_raw, apply_link, date_found,
+               job_source, opportunity_score
+        FROM opportunities
+        WHERE opportunity_score IS NOT NULL
+          AND (outreach_message IS NULL OR TRIM(outreach_message) = '')
+        ORDER BY opportunity_score DESC
+    """)
+    engine = create_engine(DATABASE_URL)
+    with engine.connect() as conn:
+        rows = conn.execute(sql).fetchall()
+        cols = conn.execute(sql).keys() if False else [
+            "id", "company", "role", "location", "remote",
+            "visa_sponsorship", "experience_req", "tech_stack",
+            "description_raw", "apply_link", "date_found",
+            "job_source", "opportunity_score"
+        ]
+    return [dict(zip(cols, row)) for row in rows]
 
-    # ── Fetch unscored jobs from database ─────────────────────────────────
-    print("\n[DB] Fetching unscored jobs...")
-    unscored = db.get_unscored_jobs()
 
-    if not unscored:
-        print("[DB] No unscored jobs found — all jobs already have scores.")
-        print("     Run python run_scraper.py first to add new jobs.")
+def get_all_jobs_for_rescore() -> list:
+    """Returns ALL jobs for full rescore."""
+    sql = text("""
+        SELECT id, company, role, location, remote,
+               visa_sponsorship, experience_req, tech_stack,
+               description_raw, apply_link, date_found, job_source
+        FROM opportunities
+        ORDER BY date_found DESC
+    """)
+    engine = create_engine(DATABASE_URL)
+    with engine.connect() as conn:
+        rows = conn.execute(sql).fetchall()
+    return [dict(row._mapping) for row in rows]
+
+
+def update_outreach_only(job_id: int, outreach_message: str):
+    """Updates only the outreach_message field — doesn't touch the score."""
+    sql = text("""
+        UPDATE opportunities
+        SET outreach_message = :msg
+        WHERE id = :job_id
+    """)
+    engine = create_engine(DATABASE_URL)
+    with engine.begin() as conn:
+        conn.execute(sql, {"msg": outreach_message, "job_id": job_id})
+
+
+def score_jobs(jobs: list, rescore: bool = False):
+    """Core scoring loop — runs classifier + scorer + outreach per job."""
+    if not jobs:
+        print("[Scorer] No jobs to process.")
         return []
 
-    if limit:
-        unscored = unscored[:limit]
-        print(f"[DB] Limiting to {limit} jobs (--limit flag)")
-
-    print(f"[DB] Found {len(unscored)} jobs to score")
+    print(f"\n[Scorer] Processing {len(jobs)} jobs...")
     print_line()
 
-    # ── Initialise AI modules ─────────────────────────────────────────────
     try:
         classifier = IOSClassifier()
         scorer     = OpportunityScorer()
@@ -69,141 +96,212 @@ def main(limit: int = None):
         print(f"\n[ERROR] {e}")
         sys.exit(1)
 
-    # ── Step 1: Classify iOS product for each job ─────────────────────────
-    print("\n[Classifier] Checking which companies build iOS products...")
-    ios_results     = {}   # {job_id: bool}
-    ios_descriptions = {}  # {job_id: str reason}
+    scored_jobs = []
+    total       = len(jobs)
 
-    for i, job in enumerate(unscored):
+    for i, job in enumerate(jobs):
         job_id  = job["id"]
         company = job.get("company", "?")[:30]
 
-        print(f"  [{i+1}/{len(unscored)}] {company:<30}", end=" ")
+        print(f"\n  [{i+1}/{total}] {company}")
 
-        result = classifier.classify(job)
-        ios_results[job_id]      = result.get("builds_ios")
-        ios_descriptions[job_id] = result.get("reason", "")
+        # Classifier
+        try:
+            cls     = classifier.classify(job)
+            ios_p   = cls.get("builds_ios")
+            ios_r   = cls.get("reason", "")
+        except Exception as e:
+            print(f"    Classifier: {e}")
+            ios_p, ios_r = None, ""
 
-        verdict = "iOS" if result.get("builds_ios") else "not iOS"
-        print(f"→ {verdict}")
+        # Scorer
+        try:
+            result    = scorer.score(job, ios_product=ios_p)
+            score     = result["score"]
+            breakdown = result.get("breakdown", {})
+            summary   = result.get("summary", "")
+            print(f"    Score: {score}/100 — {summary[:55]}")
+        except Exception as e:
+            print(f"    Scorer: {e}")
+            score, breakdown, summary = 0, {}, "failed"
 
-        # Small delay only when we actually made an API call
-        # (heuristic results don't need a delay)
-        if result.get("reason", "").startswith("Job explicitly") is False:
-            time.sleep(1.5)
+        # Outreach
+        outreach = ""
+        if score >= 65 and GROQ_API_KEY:
+            try:
+                outreach = generator.generate(
+                    job=job,
+                    ios_product_desc=ios_r,
+                    score=score,
+                )
+                if outreach:
+                    print(f"    Outreach: {len(outreach)} chars ✓")
+                else:
+                    print(f"    Outreach: skipped (below threshold or generation failed)")
+            except Exception as e:
+                print(f"    Outreach: {e}")
 
-    print_line()
-
-    # ── Step 2: Score each job ────────────────────────────────────────────
-    print("\n[Scorer] Scoring all jobs...")
-    scored_jobs = []   # list of (job, score_result)
-
-    for i, job in enumerate(unscored):
-        job_id      = job["id"]
-        ios_product = ios_results.get(job_id)
-
-        print(f"  [{i+1}/{len(unscored)}] {job.get('company','?')[:30]:<30}", end=" ")
-
-        score_result = scorer.score(job, ios_product=ios_product)
-        scored_jobs.append((job, score_result))
-
-        score = score_result["score"]
-        print(f"→ {score}/100")
-
-        # Persist score to database immediately
-        # (so partial runs aren't lost if something fails)
-        db.update_score(
-            job_id=job_id,
-            score=score,
-            breakdown=score_result.get("breakdown", {}),
-            outreach_message="",   # filled in next step
-        )
-
-        # Send high-score alert if this is exceptional
-        if score >= HIGH_SCORE_ALERT_THRESHOLD:
-            print(f"  [Alert] Score {score} >= {HIGH_SCORE_ALERT_THRESHOLD} — sending alert!")
-            alert_job = {**job, "opportunity_score": score}
-            send_high_score_alert(alert_job)
-
-        time.sleep(2)   # respect rate limit
-
-    print_line()
-
-    # ── Step 3: Generate outreach messages for top jobs ───────────────────
-    print("\n[Outreach] Generating personalized messages...")
-
-    for i, (job, score_result) in enumerate(scored_jobs):
-        job_id  = job["id"]
-        score   = score_result["score"]
-
-        if score < 65:
-            continue    # skip low-score jobs
-
-        ios_desc = ios_descriptions.get(job_id, "")
-        company  = job.get("company", "?")[:30]
-
-        print(f"  {company:<30}", end=" ")
-
-        message = generator.generate(
-            job=job,
-            ios_product_desc=ios_desc,
-            score=score,
-        )
-
-        if message:
-            # Update the outreach message in the database
+        # Write to DB — always write score + outreach together
+        try:
             db.update_score(
                 job_id=job_id,
                 score=score,
-                breakdown=score_result.get("breakdown", {}),
-                outreach_message=message,
+                breakdown=breakdown,
+                outreach_message=outreach,
             )
-            print(f"✓ ({len(message)} chars)")
-        else:
-            print("skipped")
+        except Exception as e:
+            print(f"    DB write failed: {e}")
 
-        time.sleep(2)
+        # High score alert
+        if score >= HIGH_SCORE_ALERT_THRESHOLD:
+            print(f"    ★ HIGH SCORE ({score}) — sending alert")
+            try:
+                send_high_score_alert({
+                    **job,
+                    "opportunity_score": score,
+                    "outreach_message": outreach,
+                })
+            except Exception:
+                pass
 
-    # ── Summary ───────────────────────────────────────────────────────────
-    print()
-    print_line("═")
-    print("  Scoring Complete")
-    print_line("═")
+        scored_jobs.append((job, result))
 
-    scores        = [r["score"] for _, r in scored_jobs]
-    avg_score     = sum(scores) / len(scores) if scores else 0
-    high_scores   = [s for s in scores if s >= 70]
-    alert_scores  = [s for s in scores if s >= HIGH_SCORE_ALERT_THRESHOLD]
-
-    print(f"\n  Jobs scored:      {len(scored_jobs)}")
-    print(f"  Average score:    {avg_score:.1f}/100")
-    print(f"  Score >= 70:      {len(high_scores)} jobs")
-    print(f"  Score >= {HIGH_SCORE_ALERT_THRESHOLD}:      {len(alert_scores)} jobs (alerts sent)")
-    print()
-
-    # Show top 5
-    top_jobs = sorted(scored_jobs, key=lambda x: x[1]["score"], reverse=True)[:5]
-    if top_jobs:
-        print("  Top 5 opportunities:")
-        print(f"  {'Score':<8} {'Company':<25} {'Role'}")
-        print(f"  {'─'*8} {'─'*25} {'─'*30}")
-        for job, result in top_jobs:
-            print(
-                f"  {result['score']:<8} "
-                f"{job.get('company','?')[:23]:<25} "
-                f"{job.get('role','?')[:30]}"
-            )
-    print_line("═")
-    print()
+        if i < total - 1:
+            time.sleep(2)
 
     return scored_jobs
 
 
+def outreach_only_mode(jobs: list):
+    """
+    Generates outreach for already-scored jobs that have no message.
+    Does NOT re-run the scorer — just fills in the missing outreach.
+    """
+    if not jobs:
+        print("[Outreach] All scored jobs already have outreach messages.")
+        return
+
+    print(f"\n[Outreach] Generating messages for {len(jobs)} jobs missing outreach...")
+    print_line()
+
+    if not GROQ_API_KEY:
+        print("[Outreach] GROQ_API_KEY not set — cannot generate messages")
+        return
+
+    try:
+        generator = OutreachGenerator(min_score=0)   # min_score=0 to process all
+    except ValueError as e:
+        print(f"[ERROR] {e}")
+        return
+
+    done = 0
+    for i, job in enumerate(jobs):
+        job_id  = job["id"]
+        score   = job.get("opportunity_score", 0) or 0
+        company = job.get("company", "?")[:30]
+
+        print(f"  [{i+1}/{len(jobs)}] {company} (score: {score})", end=" ")
+
+        if score < 65:
+            print("→ skipped (score < 65)")
+            continue
+
+        try:
+            message = generator.generate(
+                job=job,
+                ios_product_desc="",
+                score=score,
+            )
+            if message:
+                update_outreach_only(job_id, message)
+                print(f"→ ✓ {len(message)} chars")
+                done += 1
+            else:
+                print("→ generation returned empty")
+        except Exception as e:
+            print(f"→ failed: {e}")
+
+        time.sleep(2)
+
+    print(f"\n[Outreach] Done. {done} messages written to database.")
+
+
+def verify_outreach_count():
+    """Prints how many jobs have outreach messages."""
+    try:
+        engine = create_engine(DATABASE_URL)
+        with engine.connect() as conn:
+            total = conn.execute(text("SELECT COUNT(*) FROM opportunities")).scalar()
+            scored = conn.execute(text(
+                "SELECT COUNT(*) FROM opportunities WHERE opportunity_score IS NOT NULL"
+            )).scalar()
+            with_outreach = conn.execute(text(
+                "SELECT COUNT(*) FROM opportunities "
+                "WHERE outreach_message IS NOT NULL AND TRIM(outreach_message) != ''"
+            )).scalar()
+        print(f"\n[DB] Verification:")
+        print(f"     Total jobs:         {total}")
+        print(f"     Scored:             {scored}")
+        print(f"     With outreach:      {with_outreach}")
+        missing = scored - with_outreach
+        if missing > 0:
+            print(f"     Missing outreach:   {missing} → run with --outreach-only to fix")
+    except Exception as e:
+        print(f"[DB] Verification failed: {e}")
+
+
+def main(limit=None, outreach_only=False, rescore_all=False):
+    print()
+    print_line("═")
+    print("  DevSignal — AI Scorer")
+    print_line("═")
+
+    if outreach_only:
+        # Mode: fill in missing outreach for already-scored jobs
+        print("\n[Mode] Outreach-only — generating messages for scored jobs")
+        jobs = get_jobs_missing_outreach()
+        if limit:
+            jobs = jobs[:limit]
+        print(f"[DB] Found {len(jobs)} scored jobs missing outreach")
+        outreach_only_mode(jobs)
+
+    elif rescore_all:
+        # Mode: re-score everything from scratch
+        print("\n[Mode] Rescore ALL jobs from scratch")
+        jobs = get_all_jobs_for_rescore()
+        if limit:
+            jobs = jobs[:limit]
+        score_jobs(jobs, rescore=True)
+
+    else:
+        # Default mode: score unscored jobs only
+        jobs = db.get_unscored_jobs()
+        if not jobs:
+            print("\n[DB] All jobs already scored.")
+            verify_outreach_count()
+            print("\nTo generate missing outreach messages run:")
+            print("  python run_scorer.py --outreach-only")
+            return []
+        if limit:
+            jobs = jobs[:limit]
+        score_jobs(jobs)
+
+    verify_outreach_count()
+    return []
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DevSignal AI Scorer")
-    parser.add_argument(
-        "--limit", type=int, default=None,
-        help="Score only N jobs (for testing)"
-    )
+    parser.add_argument("--limit",          type=int,  default=None,
+                        help="Process only N jobs")
+    parser.add_argument("--outreach-only",  action="store_true",
+                        help="Generate outreach for scored jobs missing messages")
+    parser.add_argument("--all",            action="store_true",
+                        help="Re-score ALL jobs from scratch")
     args = parser.parse_args()
-    main(limit=args.limit)
+
+    main(
+        limit=args.limit,
+        outreach_only=args.outreach_only,
+        rescore_all=args.all,
+    )
