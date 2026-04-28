@@ -1,3 +1,4 @@
+# scrapers/himalayas_scraper.py
 # Himalayas — remote jobs, free public API
 # Correct endpoint: https://himalayas.app/jobs/api?q=iOS
 
@@ -42,40 +43,85 @@ class HimalayasScraper(BaseScraper):
                     seen_ids.add(job_id)
 
                     title = job.get("title", "")
-                    desc  = job.get("description", "")
+                    desc = job.get("description", "")
 
-                    if self._should_exclude(title.lower()):
+                    # Require iOS signal in TITLE specifically, not just description
+                    title_lower = title.lower()
+                    tags_lower = ", ".join(
+                        str(c) for c in job.get("categories", [])
+                    ).lower()
+
+                    title_is_ios = any(
+                        kw in title_lower
+                        for kw in [
+                            "ios",
+                            "swift",
+                            "swiftui",
+                            "iphone",
+                            "mobile app",
+                            "mobile developer",
+                            "mobile engineer",
+                        ]
+                    )
+
+                    tags_is_ios = any(
+                        kw in tags_lower
+                        for kw in [
+                            "ios",
+                            "swift",
+                            "mobile",
+                        ]
+                    )
+
+                    if not title_is_ios and not tags_is_ios:
+                        continue
+
+                    if self._should_exclude(title_lower):
                         continue
 
                     # Salary
                     sal_min = job.get("salaryMin") or job.get("salary_min")
                     sal_max = job.get("salaryMax") or job.get("salary_max")
-                    salary  = f"${int(sal_min):,}–${int(sal_max):,}" if sal_min and sal_max else ""
+
+                    salary = (
+                        f"${int(sal_min):,}–${int(sal_max):,}"
+                        if sal_min and sal_max
+                        else ""
+                    )
 
                     # Location from countries array
                     countries = job.get("countries", [])
-                    location  = ", ".join(
+                    location = ", ".join(
                         c.get("name", c) if isinstance(c, dict) else str(c)
                         for c in countries[:2]
                     ) or "Remote"
 
                     # Apply link
-                    apply_url = (job.get("applicationUrl")
-                                or job.get("applyUrl")
-                                or job.get("url")
-                                or f"https://himalayas.app/jobs/{job.get('slug','')}")
+                    apply_url = (
+                        job.get("applicationUrl")
+                        or job.get("applyUrl")
+                        or job.get("url")
+                        or f"https://himalayas.app/jobs/{job.get('slug', '')}"
+                    )
 
                     ios_jobs.append({
-                        "company":    job.get("companyName", job.get("company", {}).get("name", "") if isinstance(job.get("company"), dict) else ""),
-                        "role":       title,
-                        "location":   location,
-                        "remote":     "Yes",
-                        "visa":       "Unknown",
+                        "company": job.get(
+                            "companyName",
+                            job.get("company", {}).get("name", "")
+                            if isinstance(job.get("company"), dict)
+                            else ""
+                        ),
+                        "role": title,
+                        "location": location,
+                        "remote": "Yes",
+                        "visa": "Unknown",
                         "experience": "",
-                        "tags":       ", ".join(str(c) for c in job.get("categories", [])[:6]),
-                        "url":        apply_url,
+                        "tags": ", ".join(
+                            str(c) for c in job.get("categories", [])[:6]
+                        ),
+                        "url": apply_url,
                         "description": self._clean_html(desc),
-                        "salary":     salary,
+                        "salary": salary,
                     })
 
             except Exception as e:
@@ -87,12 +133,13 @@ class HimalayasScraper(BaseScraper):
         return any(kw in text for kw in EXCLUDE_KEYWORDS)
 
     def _clean_html(self, html):
-        clean = re.sub(r'<[^>]+>', ' ', html)
-        return re.sub(r'\s+', ' ', clean).strip()[:800]
+        clean = re.sub(r"<[^>]+>", " ", html)
+        return re.sub(r"\s+", " ", clean).strip()[:800]
 
 
 if __name__ == "__main__":
     jobs = HimalayasScraper().run()
     print(f"Found {len(jobs)} iOS jobs on Himalayas")
+
     for j in jobs[:3]:
         print(f"  {j['company']} — {j['role']}")

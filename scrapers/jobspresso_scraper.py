@@ -15,6 +15,9 @@ class JobspressoScraper(BaseScraper):
     RSS_FEEDS = [
         "https://jobspresso.co/remote-work/developer/?feed=rss2",
         "https://jobspresso.co/remote-work/mobile/?feed=rss2",
+        "https://jobspresso.co/remote-work/developer/feed/",
+        "https://jobspresso.co/remote-work/engineering/feed/",
+        "https://jobspresso.co/?feed=rss2&job_category=developer",
     ]
 
     def fetch_jobs(self) -> list[dict]:

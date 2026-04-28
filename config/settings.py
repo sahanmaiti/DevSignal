@@ -70,6 +70,9 @@ SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
 # (conserves Hunter.io's 25/month free quota)
 ENRICHMENT_MIN_SCORE = 70
 
+ADZUNA_APP_ID  = os.getenv("ADZUNA_APP_ID", "")
+ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "")
+
 # ─────────────────────────────────────────────────────────────
 # SCRAPER SETTINGS
 # ─────────────────────────────────────────────────────────────
@@ -82,3 +85,5 @@ DIGEST_TOP_N = 5
 
 # Minimum score (0-100) for a job to appear in the Telegram digest
 DIGEST_MIN_SCORE = 70
+
+NEON_DATABASE_URL = os.getenv("NEON_DATABASE_URL", "")
