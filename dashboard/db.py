@@ -14,6 +14,7 @@ import os
 import sys
 import pandas as pd
 from sqlalchemy import create_engine, text
+from streamlit_autorefresh import st_autorefresh
 
 import streamlit as st
 

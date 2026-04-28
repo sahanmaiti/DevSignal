@@ -1,7 +1,8 @@
 # dashboard/app.py
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(...)
 
 st.set_page_config(
     page_title="DevSignal",
@@ -9,6 +10,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+st_autorefresh(interval=300000, key="dashboard_refresh")
+
 
 st.markdown("""
 <style>
@@ -32,7 +36,7 @@ with st.sidebar:
     st.divider()
     st.caption("Refreshes every 5 min")
     st.caption("Built with Python + Groq + n8n")
-    if st.button("↻  Refresh data", use_container_width=True):
+    if st.button("Refresh data"):
         st.cache_data.clear()
         st.rerun()
 
