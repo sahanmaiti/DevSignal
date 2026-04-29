@@ -32,12 +32,12 @@ def get_jobs_missing_outreach() -> list:
     """
     sql = text("""
         SELECT id, company, role, location, remote,
-               visa_sponsorship, experience_req, tech_stack,
-               description_raw, apply_link, date_found,
-               job_source, opportunity_score
+            visa_sponsorship, experience_req, tech_stack,
+            description_raw, apply_link, date_found,
+            job_source, opportunity_score
         FROM opportunities
         WHERE opportunity_score IS NOT NULL
-          AND (outreach_message IS NULL OR TRIM(outreach_message) = '')
+        AND (outreach_message IS NULL OR TRIM(outreach_message) = '')
         ORDER BY opportunity_score DESC
     """)
     engine = create_engine(DATABASE_URL)
@@ -56,8 +56,8 @@ def get_all_jobs_for_rescore() -> list:
     """Returns ALL jobs for full rescore."""
     sql = text("""
         SELECT id, company, role, location, remote,
-               visa_sponsorship, experience_req, tech_stack,
-               description_raw, apply_link, date_found, job_source
+            visa_sponsorship, experience_req, tech_stack,
+            description_raw, apply_link, date_found, job_source
         FROM opportunities
         ORDER BY date_found DESC
     """)
@@ -172,39 +172,53 @@ def score_jobs(jobs: list, rescore: bool = False):
     return scored_jobs
 
 
-def outreach_only_mode(jobs: list):
+def outreach_only_mode(jobs: list, min_score: int = None):
     """
     Generates outreach for already-scored jobs that have no message.
-    Does NOT re-run the scorer — just fills in the missing outreach.
+    Uses OUTREACH_MIN_SCORE from settings (default 45).
     """
+    from config.settings import OUTREACH_MIN_SCORE
+    threshold = min_score if min_score is not None else OUTREACH_MIN_SCORE
+
     if not jobs:
         print("[Outreach] All scored jobs already have outreach messages.")
         return
 
-    print(f"\n[Outreach] Generating messages for {len(jobs)} jobs missing outreach...")
+    # Filter to jobs above threshold
+    eligible = [j for j in jobs if (j.get("opportunity_score") or 0) >= threshold]
+    below    = len(jobs) - len(eligible)
+
+    print(f"\n[Outreach] {len(jobs)} jobs missing outreach")
+    print(f"[Outreach] {len(eligible)} eligible (score >= {threshold}), "
+        f"{below} below threshold — skipping")
     print_line()
 
+    if not eligible:
+        print(f"[Outreach] No jobs score >= {threshold}.")
+        print(f"[Outreach] Your highest score is "
+            f"{max((j.get('opportunity_score') or 0) for j in jobs)}.")
+        print(f"[Outreach] Lower OUTREACH_MIN_SCORE in config/settings.py "
+            f"to generate messages for lower-scoring jobs.")
+        return
+
     if not GROQ_API_KEY:
-        print("[Outreach] GROQ_API_KEY not set — cannot generate messages")
+        print("[Outreach] GROQ_API_KEY not set")
         return
 
     try:
-        generator = OutreachGenerator(min_score=0)   # min_score=0 to process all
+        # min_score=0 because we already filtered eligible above
+        generator = OutreachGenerator(min_score=0)
     except ValueError as e:
         print(f"[ERROR] {e}")
         return
 
     done = 0
-    for i, job in enumerate(jobs):
+    for i, job in enumerate(eligible):
         job_id  = job["id"]
         score   = job.get("opportunity_score", 0) or 0
         company = job.get("company", "?")[:30]
 
-        print(f"  [{i+1}/{len(jobs)}] {company} (score: {score})", end=" ")
-
-        if score < 65:
-            print("→ skipped (score < 65)")
-            continue
+        print(f"  [{i+1}/{len(eligible)}] {company} (score: {score})", end=" ", flush=True)
 
         try:
             message = generator.generate(
@@ -212,18 +226,19 @@ def outreach_only_mode(jobs: list):
                 ios_product_desc="",
                 score=score,
             )
-            if message:
+            if message and len(message.strip()) > 10:
                 update_outreach_only(job_id, message)
                 print(f"→ ✓ {len(message)} chars")
                 done += 1
             else:
-                print("→ generation returned empty")
+                print("→ empty response from Groq")
         except Exception as e:
             print(f"→ failed: {e}")
 
-        time.sleep(2)
+        if i < len(eligible) - 1:
+            time.sleep(2)
 
-    print(f"\n[Outreach] Done. {done} messages written to database.")
+    print(f"\n[Outreach] Done. {done}/{len(eligible)} messages written.")
 
 
 def verify_outreach_count():
@@ -257,8 +272,9 @@ def main(limit=None, outreach_only=False, rescore_all=False):
     print_line("═")
 
     if outreach_only:
-        # Mode: fill in missing outreach for already-scored jobs
-        print("\n[Mode] Outreach-only — generating messages for scored jobs")
+        print("\n[Mode] Outreach-only — filling missing messages")
+        from config.settings import OUTREACH_MIN_SCORE
+        print(f"[Mode] Threshold: score >= {OUTREACH_MIN_SCORE}")
         jobs = get_jobs_missing_outreach()
         if limit:
             jobs = jobs[:limit]

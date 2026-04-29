@@ -148,16 +148,16 @@ class DBClient:
 
         Key design decisions:
         1. ON CONFLICT (job_hash) DO NOTHING
-           If a hash already exists, skip it silently. No error, no crash.
-           This is the final safety net after deduplication.
+        If a hash already exists, skip it silently. No error, no crash.
+        This is the final safety net after deduplication.
 
         2. execute_values() instead of a loop
-           Sends all rows in a single SQL statement rather than one INSERT
-           per job. 50x faster for large batches.
+        Sends all rows in a single SQL statement rather than one INSERT
+        per job. 50x faster for large batches.
 
         3. %s placeholders — NEVER use f-strings or .format() for SQL values.
-           Psycopg2's %s is parameterised — it prevents SQL injection and
-           handles special characters (quotes, backslashes) automatically.
+        Psycopg2's %s is parameterised — it prevents SQL injection and
+        handles special characters (quotes, backslashes) automatically.
         """
         if not jobs:
             return 0
@@ -199,14 +199,14 @@ class DBClient:
                 return inserted if inserted > 0 else len(rows)
 
     def update_score(self, job_id: int, score: int,
-                     breakdown: dict, outreach_message: str) -> None:
+                    breakdown: dict, outreach_message: str) -> None:
         """
         Writes AI scoring results back to a specific job row.
         Called by ai/scorer.py after Claude API returns results.
 
         breakdown is a dict like:
         {"remote": 20, "visa": 15, "swift_match": 15, "ios_product": 15,
-         "experience": 10, "salary": 10, "startup": 10, "recency": 5}
+        "experience": 10, "salary": 10, "startup": 10, "recency": 5}
         """
         sql = """
             UPDATE opportunities
@@ -225,8 +225,8 @@ class DBClient:
                 ))
 
     def update_recruiter(self, job_id: int, recruiter_name: str,
-                         recruiter_role: str, linkedin_profile: str,
-                         email: str) -> None:
+                        recruiter_role: str, linkedin_profile: str,
+                        email: str) -> None:
         """
         Writes recruiter enrichment data to a specific job row.
         Called by processors/enricher.py (Phase 6).
@@ -250,8 +250,8 @@ class DBClient:
                 ))
 
     def update_application(self, job_id: int, applied: bool,
-                           response_status: str = "",
-                           interview_stage: str = "") -> None:
+                        response_status: str = "",
+                        interview_stage: str = "") -> None:
         """
         Updates application tracking fields.
         Called from the Streamlit dashboard or manually.
@@ -295,8 +295,8 @@ class DBClient:
                 cur.execute(sql)
                 return [dict(row) for row in cur.fetchall()]
 
-    def get_top_opportunities(self, min_score: int = 70,
-                              limit: int = 5) -> list:
+    def get_top_opportunities(self, min_score: int = 45,   # was 70
+                            limit: int = 5) -> list:
         """
         Returns the top N scoring jobs from the last 12 hours.
         Called by notifications/telegram_bot.py to build the digest.
@@ -308,7 +308,7 @@ class DBClient:
                 apply_link, outreach_message, date_found, job_source
             FROM opportunities
             WHERE opportunity_score >= %s
-              AND date_found >= NOW() - INTERVAL '12 hours'
+            AND date_found >= NOW() - INTERVAL '12 hours'
             ORDER BY opportunity_score DESC
             LIMIT %s
         """
@@ -320,8 +320,8 @@ class DBClient:
                 return [dict(row) for row in cur.fetchall()]
 
     def get_all_opportunities(self, min_score: int = 0,
-                              remote_only: bool = False,
-                              unapplied_only: bool = False) -> list:
+                            remote_only: bool = False,
+                            unapplied_only: bool = False) -> list:
         """
         Returns opportunities with optional filters.
         Used by the Streamlit dashboard.
