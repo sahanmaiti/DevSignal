@@ -18,7 +18,7 @@
 
 <br>
 
-[![Live Dashboard](https://img.shields.io/badge/Live_Dashboard-devsignal.streamlit.app-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://devsignal-bysahanmaiti.streamlit.app)
+[![Live Dashboard](https://img.shields.io/badge/Live_Dashboard-devsignal--sahanmaiti.streamlit.app-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://devsignal-bysahanmaiti.streamlit.app)
 
 <br>
 
@@ -45,15 +45,15 @@ Searching for iOS internships is repetitive, noisy, and punishingly manual. For 
 
 | Stage | What happens |
 |---|---|
-| **Discovery** | Scrapes 15 job platforms simultaneously for iOS/Swift roles |
+| **Discovery** | Scrapes 13 job platforms simultaneously for iOS/Swift roles |
 | **Parsing** | Extracts structured fields (experience, salary, remote, visa) from raw descriptions |
 | **Filtering** | Drops senior roles, non-iOS positions, and anything requiring 3+ years |
 | **Deduplication** | MD5 hash fingerprinting — the same job never appears twice, across any number of runs |
 | **Classification** | Determines whether the company actually builds a native iOS product |
 | **AI Scoring** | Scores each job 0–100 across 8 weighted factors using Groq/Llama 3.1 |
-| **Enrichment** | Finds recruiter names, LinkedIn profiles, and email patterns via Hunter.io + Serper |
-| **Outreach** | Generates a personalized recruiter message for every job scoring ≥65 |
-| **Notification** | Telegram digest with top 5 scored opportunities sent to your phone |
+| **Enrichment** | Finds recruiter names, LinkedIn profiles, and email patterns via Hunter.io + Serper for jobs scoring ≥50 |
+| **Outreach** | Generates a personalized recruiter message for every job scoring ≥45 |
+| **Notification** | Telegram digest with top opportunities scoring ≥45 sent to your phone |
 | **Tracking** | Full application lifecycle — applied, responded, interview stage — tracked in Postgres |
 
 ---
@@ -83,12 +83,12 @@ The model returns a structured JSON breakdown explaining each factor — not jus
 A two-stage classifier first applies heuristic rules (if "swiftui" appears in the description, it's iOS — no API call needed), then falls back to Groq for ambiguous cases. Saves ~60% of API quota on clear cases.
 
 **Personalized Recruiter Outreach**
-For jobs scoring ≥65, the system generates a LinkedIn-ready connection message that references the company's specific iOS product, mentions your real projects, and stays under 280 characters. Temperature is set slightly higher than scoring to add natural variation — no two messages are identical.
+For jobs scoring ≥45, the system generates a LinkedIn-ready connection message that references the company's specific iOS product, mentions your real projects, and stays under 280 characters. Temperature is set slightly higher than scoring to add natural variation — no two messages are identical.
 
 **3-Layer Recruiter Enrichment**
 Every free-tier resource is spent intentionally:
 - **Layer 1** — Extract email addresses directly from job description text. Free, instant, no quota.
-- **Layer 2** — Hunter.io domain search for email patterns and recruiter contacts. 25 searches/month free, reserved for jobs scoring ≥70 only. Results are locally cached in JSON so the same domain is never queried twice.
+- **Layer 2** — Hunter.io domain search for email patterns and recruiter contacts. 25 searches/month free, reserved for jobs scoring ≥50 only. Results are locally cached in JSON so the same domain is never queried twice.
 - **Layer 3** — Google search via Serper.dev to find LinkedIn profile URLs without ever touching LinkedIn's blocked scraping surface.
 - **Layer 4** — Groq fallback to suggest the most likely recruiter title when all else fails.
 
@@ -96,7 +96,7 @@ Every free-tier resource is spent intentionally:
 n8n fires on a 12-hour schedule and calls a local FastAPI webhook at `/run-pipeline`. FastAPI executes the pipeline and returns structured JSON. This architecture cleanly separates orchestration from execution — any scheduler (cron, GitHub Actions, another tool) can trigger the pipeline over HTTP without touching the pipeline code.
 
 **Live Analytics Dashboard**
-Four-page Streamlit dashboard deployed to Streamlit Cloud. Reads from a Neon cloud Postgres mirror so it's publicly accessible. Shows KPI cards, score distribution histogram, application funnel, outreach messages, pipeline health, and run history.
+Four-page Streamlit dashboard deployed to Streamlit Cloud at **[devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)**. Reads directly from Neon PostgreSQL in production. Shows KPI cards, score distribution histogram, application funnel, outreach messages, pipeline health, and run history.
 
 **Zero-Cost Architecture**
 Every service runs on a free tier. Monthly operational cost: **$0**.
@@ -104,7 +104,7 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
 | Service | Free tier | Usage |
 |---|---|---|
 | Groq | 14,400 req/day | Scoring, classification, outreach |
-| Neon | 512 MB Postgres | Cloud dashboard mirror |
+| Neon | 512 MB Postgres | Production cloud database |
 | Streamlit Cloud | Unlimited public apps | Dashboard hosting |
 | Hunter.io | 25 domain searches/month | Email enrichment |
 | Serper.dev | 2,500 searches on signup | LinkedIn profile finding |
@@ -172,7 +172,7 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
            │                             │
     ┌──────▼──────┐             ┌────────▼────────┐
     │  Telegram   │             │  Neon Postgres  │
-    │  Bot digest │             │  (cloud mirror) │
+    │  Bot digest │             │  (production)   │
     └─────────────┘             └────────┬────────┘
                                          │
                                 ┌────────▼────────┐
@@ -193,7 +193,7 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
 | **Scraping** | Python 3.12, requests, BeautifulSoup4, feedparser | HTTP, HTML, RSS multi-source job collection |
 | **Processing** | re, custom NLP | Field extraction, filtering, deduplication |
 | **AI / LLM** | Groq API (Llama 3.1 8B) | Scoring, classification, outreach |
-| **Database** | PostgreSQL 16, psycopg2, SQLAlchemy | Primary store + Neon cloud mirror |
+| **Database** | PostgreSQL 16, psycopg2, SQLAlchemy | Primary store + Neon cloud production DB |
 | **Automation** | n8n (Docker), launchd | 12h scheduler + process management |
 | **Enrichment** | Hunter.io API, Serper.dev API | Recruiter contacts + LinkedIn profiles |
 | **Notifications** | Telegram Bot API | Real-time mobile digest |
@@ -204,7 +204,9 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
 
 ## Dashboard
 
-Live at **[devsignal.streamlit.app](https://devsignal-sahanmaiti.streamlit.app/)**
+Live at **[devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)**
+
+Reads directly from Neon PostgreSQL in production.
 
 **Overview** — KPI summary (jobs found, score ≥70, applied, responses, interviews, avg score), score distribution histogram with threshold marker, jobs-by-source bar chart coloured by average score, application funnel, recent top opportunities feed.
 
@@ -325,8 +327,8 @@ The `.env` file is gitignored. A safe `.env.example` with placeholder values is 
 python run_scraper.py                  # Tiered multi-source pipeline (15+ sources) → parse → filter → dedup → store → notify
 python run_scorer.py                   # AI score all unscored jobs
 python run_scorer.py --limit 5         # Score only 5 (useful for testing)
-python run_enricher.py                 # Enrich jobs scoring ≥70
-python run_enricher.py --min-score 60  # Lower the enrichment threshold
+python run_enricher.py                 # Enrich jobs scoring ≥50
+python run_enricher.py --min-score 45  # Lower the enrichment threshold
 python run_enricher.py --limit 10      # Limit for testing
 
 # ── Database sync ──────────────────────────────────────────────────────────
@@ -466,7 +468,7 @@ The scoring prompt specifies exact point values, possible states per factor, a r
 The PostgreSQL schema uses proper column types throughout: `SMALLINT` for scores (0–100, wastes no storage), `JSONB` for score breakdowns (queryable, not just a dumped string), `TIMESTAMPTZ` for all timestamps (timezone-aware), and `TEXT` instead of `VARCHAR(N)` for variable-length fields after learning the hard way that HackerNews job titles have no length limit. Six named indexes cover the query patterns the dashboard and pipeline actually run. A `BEFORE UPDATE` trigger maintains `updated_at` automatically.
 
 **Quota-Aware Resource Management**
-Hunter.io's 25 monthly searches are spent only on jobs scoring ≥70. Hunter results are cached to disk so the same domain is never queried twice across runs. Serper searches follow the same threshold. The classifier heuristic reduces Groq calls. Every free-tier constraint is treated as a design constraint, not an afterthought.
+Hunter.io's 25 monthly searches are spent only on jobs scoring ≥50. Hunter results are cached to disk so the same domain is never queried twice across runs. Serper searches follow the same threshold. The classifier heuristic reduces Groq calls. Every free-tier constraint is treated as a design constraint, not an afterthought.
 
 **Resilient Automation**
 When n8n's newer versions removed the `Execute Command` node, the system was redesigned around a FastAPI webhook — a cleaner architecture than running shell commands from a workflow engine. The pipeline is now triggerable by any HTTP client. `run_pipeline.sh` detects whether it's running inside Docker (`/app`) or on the host Mac and adjusts paths accordingly. The launchd plist ensures the FastAPI server restarts automatically after reboots.
@@ -478,6 +480,9 @@ When n8n's newer versions removed the `Execute Command` node, the system was red
 
 ## Roadmap
 
+- [x] **Public cloud dashboard** — Live at [devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)
+- [x] **AI outreach generation** — Personalized recruiter messages for all jobs scoring ≥45
+- [x] **Neon production database sync** — Dashboard reads directly from Neon PostgreSQL
 - [ ] **Resume tailoring** — Given a job description, rewrite specific resume bullets to match using the same Groq pipeline
 - [ ] **LinkedIn outreach automation** — Browser automation layer to send generated messages directly from the dashboard
 - [ ] **Ranking model v2** — Train a lightweight classifier on personal application outcome data collected over time
