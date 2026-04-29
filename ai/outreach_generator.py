@@ -57,7 +57,9 @@ class OutreachGenerator:
     Only runs for jobs above the score threshold to save API quota.
     """
 
-    def __init__(self, min_score: int = 65):
+    def __init__(self, min_score: int = None):
+        from config.settings import OUTREACH_MIN_SCORE
+        self.min_score = min_score if min_score is not None else OUTREACH_MIN_SCORE
         if not GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY not set in .env")
         self.client    = Groq(api_key=GROQ_API_KEY)

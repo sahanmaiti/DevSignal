@@ -51,8 +51,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL   = "llama-3.1-8b-instant"
 
 # Scoring thresholds
-HIGH_SCORE_ALERT_THRESHOLD = 85   # send immediate Telegram alert above this
-DIGEST_MIN_SCORE           = 60   # only include in digest above this
+HIGH_SCORE_ALERT_THRESHOLD = 70   # send immediate Telegram alert above this
+DIGEST_MIN_SCORE           = 45   # only include in digest above this
+OUTREACH_MIN_SCORE         = 45
 # ─────────────────────────────────────────────────────────────
 # ENRICHMENT APIs
 # ─────────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ APOLLO_API_KEY = os.getenv("APOLLO_API_KEY", "")
 SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
 # Only enrich jobs scoring at or above this threshold
 # (conserves Hunter.io's 25/month free quota)
-ENRICHMENT_MIN_SCORE = 70
+ENRICHMENT_MIN_SCORE = 50
 
 ADZUNA_APP_ID  = os.getenv("ADZUNA_APP_ID", "")
 ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "")
@@ -84,6 +85,6 @@ MAX_EXPERIENCE_YEARS = 2
 DIGEST_TOP_N = 5
 
 # Minimum score (0-100) for a job to appear in the Telegram digest
-DIGEST_MIN_SCORE = 70
+DIGEST_MIN_SCORE = 745
 
 NEON_DATABASE_URL = os.getenv("NEON_DATABASE_URL", "")
