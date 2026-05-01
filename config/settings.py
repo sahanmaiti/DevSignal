@@ -1,24 +1,9 @@
-# config/settings.py
-#
-# PURPOSE:
-#   Central home for ALL configuration in the project.
-#   Every other file imports from here — nothing reads os.getenv() directly.
-#
-#   Why centralize? If you ever rename a variable or change a default,
-#   you change it in ONE place and everything updates automatically.
-#
-# HOW IT WORKS:
-#   1. load_dotenv() reads your .env file
-#   2. os.getenv("KEY") retrieves the value for that key
-#   3. The second argument to os.getenv() is the default if the key is missing
-
 import os
 from dotenv import load_dotenv
 
 # load_dotenv() must be called before any os.getenv() calls.
 # It reads .env from the current directory (or parent directories).
 load_dotenv()
-
 
 # ─────────────────────────────────────────────────────────────
 # DATABASE
@@ -62,7 +47,7 @@ OUTREACH_MIN_SCORE         = 45
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")
 
 # Apollo.io — finds recruiter and hiring manager contact info
-APOLLO_API_KEY = os.getenv("APOLLO_API_KEY", "")
+#APOLLO_API_KEY = os.getenv("APOLLO_API_KEY", "")
 
 # Serper.dev for Google search (free tier: 100 searches/month)
 # Get free key at serper.dev — used for LinkedIn profile finding
@@ -88,3 +73,7 @@ DIGEST_TOP_N = 5
 DIGEST_MIN_SCORE = 745
 
 NEON_DATABASE_URL = os.getenv("NEON_DATABASE_URL", "")
+
+
+PIPELINE_API_KEY = os.getenv("PIPELINE_API_KEY", "devsignal-local-key-2024")
+APP_ENV = os.getenv("APP_ENV", "development")
