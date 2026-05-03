@@ -23,7 +23,7 @@ class AppEnvironment {
     // During development this points to localhost (your Mac).
     // The iOS Simulator on the same Mac can reach localhost directly.
     // For a real device, you'd use your Mac's local IP (e.g. 192.168.1.x)
-    var baseURL: String = "http://127.0.0.1:8000"
+    var baseURL: String = "http://127.0.0.1:8002"
     
     // The API key that matches PIPELINE_API_KEY in your .env file
     var apiKey: String = "devsignal-local-key-2024"

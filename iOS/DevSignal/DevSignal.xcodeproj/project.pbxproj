@@ -8,12 +8,25 @@
 
 /* Begin PBXBuildFile section */
 		DE7EF7C62FA62E5600F20E35 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7972FA6250900F20E35 /* AppEnvironment.swift */; };
+		DE7EF7F92FA63A8300F20E35 /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7F82FA63A8200F20E35 /* APIError.swift */; };
+		DE7EF7FB2FA63A9800F20E35 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7FA2FA63A9700F20E35 /* APIClient.swift */; };
+		DE7EF8042FA641B100F20E35 /* DashboardStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7F62FA63A4F00F20E35 /* DashboardStats.swift */; };
+		DE7EF8052FA641C500F20E35 /* JobPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7F52FA63A2B00F20E35 /* JobPage.swift */; };
+		DE7EF8062FA641CD00F20E35 /* Job.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7F42FA639F300F20E35 /* Job.swift */; };
+		DE7EF8072FA6421000F20E35 /* ScoreBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7A52FA625D200F20E35 /* ScoreBadge.swift */; };
+		DE7EF8092FA642C100F20E35 /* SharedComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8082FA642BF00F20E35 /* SharedComponents.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		DE7EF7882FA624DB00F20E35 /* DevSignal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DevSignal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DE7EF7972FA6250900F20E35 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		DE7EF7A52FA625D200F20E35 /* ScoreBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreBadge.swift; sourceTree = "<group>"; };
+		DE7EF7F42FA639F300F20E35 /* Job.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Job.swift; sourceTree = "<group>"; };
+		DE7EF7F52FA63A2B00F20E35 /* JobPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobPage.swift; sourceTree = "<group>"; };
+		DE7EF7F62FA63A4F00F20E35 /* DashboardStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardStats.swift; sourceTree = "<group>"; };
+		DE7EF7F82FA63A8200F20E35 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
+		DE7EF7FA2FA63A9700F20E35 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		DE7EF8082FA642BF00F20E35 /* SharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedComponents.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -43,6 +56,7 @@
 		DE7EF77F2FA624DB00F20E35 = {
 			isa = PBXGroup;
 			children = (
+				DE7EF7F32FA639E100F20E35 /* Models */,
 				DE7EF78A2FA624DB00F20E35 /* DevSignal */,
 				DE7EF7BC2FA6262600F20E35 /* Features */,
 				DE7EF7962FA624EC00F20E35 /* Core */,
@@ -62,6 +76,7 @@
 		DE7EF7962FA624EC00F20E35 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				DE7EF7F72FA63A7400F20E35 /* Networking */,
 				DE7EF7972FA6250900F20E35 /* AppEnvironment.swift */,
 			);
 			path = Core;
@@ -78,9 +93,29 @@
 		DE7EF7A42FA625C800F20E35 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				DE7EF8082FA642BF00F20E35 /* SharedComponents.swift */,
 				DE7EF7A52FA625D200F20E35 /* ScoreBadge.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		DE7EF7F32FA639E100F20E35 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				DE7EF7F62FA63A4F00F20E35 /* DashboardStats.swift */,
+				DE7EF7F42FA639F300F20E35 /* Job.swift */,
+				DE7EF7F52FA63A2B00F20E35 /* JobPage.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		DE7EF7F72FA63A7400F20E35 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				DE7EF7FA2FA63A9700F20E35 /* APIClient.swift */,
+				DE7EF7F82FA63A8200F20E35 /* APIError.swift */,
+			);
+			path = Networking;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -159,6 +194,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				DE7EF7C62FA62E5600F20E35 /* AppEnvironment.swift in Sources */,
+				DE7EF7FB2FA63A9800F20E35 /* APIClient.swift in Sources */,
+				DE7EF8072FA6421000F20E35 /* ScoreBadge.swift in Sources */,
+				DE7EF8052FA641C500F20E35 /* JobPage.swift in Sources */,
+				DE7EF8092FA642C100F20E35 /* SharedComponents.swift in Sources */,
+				DE7EF8042FA641B100F20E35 /* DashboardStats.swift in Sources */,
+				DE7EF7F92FA63A8300F20E35 /* APIError.swift in Sources */,
+				DE7EF8062FA641CD00F20E35 /* Job.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

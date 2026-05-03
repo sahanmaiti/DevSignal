@@ -82,54 +82,48 @@ class UpdateApplicationRequest(BaseModel):
 
 
 class DeviceRegistrationRequest(BaseModel):
-    """Body for POST /devices"""
-    device_token: str
-    platform: str = "ios"
+        """Body for POST /devices"""
+        device_token: str
+        platform: str = "ios"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPER FUNCTION
-# ─────────────────────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────────
+    # HELPER FUNCTION
+    # ─────────────────────────────────────────────────────────────────────────────
 
-def serialize_job(row: dict) -> dict:
-    """
-    Converts a raw database row (dict) into a clean JSON-serializable dict
-    that the iOS app expects.
-    
-    Why needed? Raw psycopg2 rows may contain:
-    - datetime objects (not JSON-serializable → must convert to ISO string)
-    - None values (fine, maps to null in JSON)
-    - Extra columns the iOS app doesn't need (we can omit them)
-    
-    We keep only the fields the iOS app actually uses — smaller payload,
-    less data over the network, clearer contract.
-    """
-    def dt_to_str(val):
-        """Convert datetime to ISO 8601 string, or return None if already None"""
-        if isinstance(val, datetime):
-            return val.isoformat()
-        return val
-    
-    return {
+    def serialize_job(row: dict) -> dict:
+        def dt_to_str(val):
+            if isinstance(val, datetime):
+                return val.isoformat()
+            return val
 
-        "id":                   row.get("id"),
-        "title":                row.get("role"),                
-        "company":              row.get("company"),
-        "source":               row.get("job_source"),          
-        "url":                  row.get("apply_link"),          
-        "score":                row.get("opportunity_score"),   
-        "score_breakdown":      row.get("score_breakdown"),
-        "score_explanation":    None,
-        "is_remote":            row.get("remote") == "Yes",
-        "visa_sponsorship":     row.get("visa_sponsorship"),
-        "is_ios_product":       None,
-        "experience_required":  row.get("experience_req") or None,
-        "location":             row.get("location"),
-        "salary":               None,
-        "posted_at":            None,
-        "discovered_at":        dt_to_str(row.get("date_found")),
-        "application_status":   row.get("response_status") or None,
-    }
+        # Convert "Yes"/"No" strings → real booleans
+        def to_bool(val):
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, str):
+                return val.lower() in ("yes", "true", "1")
+            return None
+
+        return {
+            "id":                   str(row.get("id")),   # also stringify id here
+            "title":                row.get("title"),
+            "company":              row.get("company"),
+            "source":               row.get("source") or row.get("job_source"),
+            "url":                  row.get("url") or row.get("apply_link"),
+            "score":                row.get("score") or row.get("opportunity_score"),
+            "score_breakdown":      row.get("score_breakdown"),
+            "score_explanation":    row.get("score_explanation"),
+            "is_remote":            to_bool(row.get("is_remote") or row.get("remote")),
+            "visa_sponsorship":     to_bool(row.get("visa_sponsorship")),
+            "is_ios_product":       row.get("is_ios_product"),
+            "experience_required":  row.get("experience_required") or row.get("experience_req"),
+            "location":             row.get("location"),
+            "salary":               row.get("salary"),
+            "posted_at":            dt_to_str(row.get("posted_at") or row.get("date_found")),
+            "discovered_at":        dt_to_str(row.get("discovered_at") or row.get("date_found")),
+            "application_status":   row.get("application_status"),
+        }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

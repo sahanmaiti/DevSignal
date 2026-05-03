@@ -692,10 +692,6 @@ class DBClient:
         """
         Aggregates pipeline and application statistics for the iOS Analytics tab.
         Called by GET /stats.
-
-        Runs several focused queries and combines their results into one dict.
-        Each query does its aggregation in SQL (not Python) — far more efficient
-        than loading thousands of rows and summing them in application code.
         """
         with self.get_conn() as conn:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -703,9 +699,9 @@ class DBClient:
             # ── Query 1: job-level aggregates ─────────────────────────────
             cursor.execute("""
                 SELECT
-                    COUNT(*)                                    AS total_opportunities,
-                    AVG(opportunity_score)                                  AS avg_opportunity_score,
-                    COUNT(CASE WHEN opportunity_score >= 70 THEN 1 END)     AS opportunities_above_70
+                    COUNT(*)                                            AS total_jobs,
+                    AVG(opportunity_score)                              AS avg_score,
+                    COUNT(CASE WHEN opportunity_score >= 70 THEN 1 END) AS jobs_above_70
                 FROM opportunities
                 WHERE opportunity_score IS NOT NULL
             """)
@@ -721,14 +717,15 @@ class DBClient:
             """)
             app_stats = dict(cursor.fetchone())
 
-            # Reply rate = replied ÷ applied  (guard against division by zero)
+            # Reply rate = replied ÷ applied (guard against division by zero)
             applied_count = app_stats.get("applied_count") or 1
             reply_rate = (app_stats.get("replied_count") or 0) / applied_count
 
             # ── Query 3: score distribution (buckets of 10) ───────────────
             cursor.execute("""
                 SELECT
-                    CONCAT(FLOOR(opportunity_score/10)*10, '-', FLOOR(opportunity_score/10)*10+9) AS range,
+                    CONCAT(FLOOR(opportunity_score/10)*10, '-',
+                        FLOOR(opportunity_score/10)*10+9) AS range,
                     COUNT(*) AS count
                 FROM opportunities
                 WHERE opportunity_score IS NOT NULL
@@ -740,13 +737,13 @@ class DBClient:
             # ── Query 4: top sources by average score ─────────────────────
             cursor.execute("""
                 SELECT
-                    job_source,
-                    ROUND(AVG(opportunity_score), 1) AS avg_opportunity_score,
-                    COUNT(*) AS count
+                    job_source                          AS source,
+                    ROUND(AVG(opportunity_score), 1)    AS avg_score,
+                    COUNT(*)                            AS count
                 FROM opportunities
                 WHERE opportunity_score IS NOT NULL
                 GROUP BY job_source
-                ORDER BY avg_opportunity_score DESC
+                ORDER BY avg_score DESC
                 LIMIT 10
             """)
             top_sources = [dict(r) for r in cursor.fetchall()]
@@ -762,15 +759,15 @@ class DBClient:
             last_run = last_run_row["started_at"] if last_run_row else None
 
             return {
-                "total_jobs":           agg.get("total_opportunities", 0),
-                "avg_score":            float(agg.get("avg_opportunity_score") or 0),
-                "jobs_above_70":        agg.get("opportunities_above_70", 0),
-                "applied_count":        app_stats.get("applied_count", 0),
-                "reply_rate":           reply_rate,
-                "interview_count":      app_stats.get("interview_count", 0),
-                "pipeline_last_run":    last_run,
-                "score_distribution":   score_distribution,
-                "top_sources":          top_sources,
+                "total_jobs":         agg.get("total_jobs", 0),
+                "avg_score":          float(agg.get("avg_score") or 0),
+                "jobs_above_70":      agg.get("jobs_above_70", 0),
+                "applied_count":      app_stats.get("applied_count", 0),
+                "reply_rate":         reply_rate,
+                "interview_count":    app_stats.get("interview_count", 0),
+                "pipeline_last_run":  last_run,
+                "score_distribution": score_distribution,
+                "top_sources":        top_sources,
             }
 
     # ─────────────────────────────────────────────────────────────────────
