@@ -175,33 +175,38 @@ struct Job: Codable, Identifiable {
 // The score_breakdown JSONB field from Postgres — a dict of factor → points
 // All fields are optional because older jobs may not have all factors
 
-struct ScoreBreakdown: Codable {
-    let remote: Int?
-    let visa: Int?
-    let swift: Int?
-    let iosProduct: Int?
-    let experience: Int?
-    let salary: Int?
-    let funded: Int?
-    let recency: Int?
-    
-    enum CodingKeys: String, CodingKey {
-        case remote, visa, swift, salary, funded, recency
-        case iosProduct  = "ios_product"
-        case experience
+    struct ScoreBreakdown: Codable {
+        let remote: Int?
+        let visa: Int?
+        let swift: Int?
+        let iosProduct: Int?
+        let experience: Int?
+        let salary: Int?
+        let funded: Int?
+        let recency: Int?
+
+        enum CodingKeys: String, CodingKey {
+            // Exact keys from your DB:
+            case remote          = "remote_work"
+            case visa            = "visa_sponsorship"
+            case swift           = "swift_match"
+            case iosProduct      = "ios_product"
+            case experience      = "experience_level"
+            case salary          = "salary_mentioned"
+            case funded          = "startup_potential"
+            case recency         = "recency"
+        }
+
+        var factors: [(name: String, points: Int)] {
+            [
+                ("Remote",      remote ?? 0),
+                ("Visa",        visa ?? 0),
+                ("Swift",       swift ?? 0),
+                ("iOS Product", iosProduct ?? 0),
+                ("Experience",  experience ?? 0),
+                ("Salary",      salary ?? 0),
+                ("Funded",      funded ?? 0),
+                ("Recency",     recency ?? 0),
+            ]
+        }
     }
-    
-    // All breakdown factors as a list for building charts
-    var factors: [(name: String, points: Int)] {
-        [
-            ("Remote",      remote ?? 0),
-            ("Visa",        visa ?? 0),
-            ("Swift",       swift ?? 0),
-            ("iOS Product", iosProduct ?? 0),
-            ("Experience",  experience ?? 0),
-            ("Salary",      salary ?? 0),
-            ("Funded",      funded ?? 0),
-            ("Recency",     recency ?? 0),
-        ]
-    }
-}
