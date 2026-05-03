@@ -15,6 +15,7 @@
 		DE7EF8062FA641CD00F20E35 /* Job.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7F42FA639F300F20E35 /* Job.swift */; };
 		DE7EF8072FA6421000F20E35 /* ScoreBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7A52FA625D200F20E35 /* ScoreBadge.swift */; };
 		DE7EF8092FA642C100F20E35 /* SharedComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8082FA642BF00F20E35 /* SharedComponents.swift */; };
+		DE7EF80B2FA7E81B00F20E35 /* OutreachMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF80A2FA7E81A00F20E35 /* OutreachMessage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 		DE7EF7F82FA63A8200F20E35 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
 		DE7EF7FA2FA63A9700F20E35 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		DE7EF8082FA642BF00F20E35 /* SharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedComponents.swift; sourceTree = "<group>"; };
+		DE7EF80A2FA7E81A00F20E35 /* OutreachMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutreachMessage.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -102,6 +104,7 @@
 		DE7EF7F32FA639E100F20E35 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				DE7EF80A2FA7E81A00F20E35 /* OutreachMessage.swift */,
 				DE7EF7F62FA63A4F00F20E35 /* DashboardStats.swift */,
 				DE7EF7F42FA639F300F20E35 /* Job.swift */,
 				DE7EF7F52FA63A2B00F20E35 /* JobPage.swift */,
@@ -193,6 +196,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DE7EF80B2FA7E81B00F20E35 /* OutreachMessage.swift in Sources */,
 				DE7EF7C62FA62E5600F20E35 /* AppEnvironment.swift in Sources */,
 				DE7EF7FB2FA63A9800F20E35 /* APIClient.swift in Sources */,
 				DE7EF8072FA6421000F20E35 /* ScoreBadge.swift in Sources */,

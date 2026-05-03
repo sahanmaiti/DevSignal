@@ -124,6 +124,37 @@ struct DiscoverPlaceholderRow: View {
     .padding()
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AttributeRow
+// A labelled detail row used in JobDetailView's Details section.
+// Icon + label + value in a horizontal layout.
+// Moved to SharedComponents so both JobDetailView and any future
+// detail screens can use it without redefining it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct AttributeRow: View {
+    let icon: String
+    let label: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .frame(width: 20)
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .leading)
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.medium)
+            Spacer()
+        }
+    }
+}
+	
 #Preview("Placeholders") {
     VStack(spacing: 12) {
         PlaceholderJobCard()
