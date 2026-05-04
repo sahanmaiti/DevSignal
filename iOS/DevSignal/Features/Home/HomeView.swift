@@ -22,13 +22,14 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
-    
+    @Environment(AppEnvironment.self) private var environment
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     greetingSection
-                    
+
                     if viewModel.isLoading {
                         // Show placeholder stats while loading
                         HStack(spacing: 12) {
@@ -39,7 +40,7 @@ struct HomeView: View {
                     } else if let stats = viewModel.stats {
                         statsRow(stats: stats)
                     }
-                    
+
                     topJobsSection
                 }
                 .padding(.horizontal, 20)
@@ -47,6 +48,20 @@ struct HomeView: View {
             }
             .navigationTitle("DevSignal")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    @Bindable var bindableEnvironment = environment
+                    Menu {
+                        Picker("Appearance", selection: $bindableEnvironment.appearanceModeRaw) {
+                            ForEach(AppearanceMode.allCases) { mode in
+                                Text(mode.title).tag(mode.rawValue)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "circle.lefthalf.filled")
+                    }
+                }
+            }
             .task {
                 if viewModel.stats == nil {
                     await viewModel.load()
@@ -57,13 +72,13 @@ struct HomeView: View {
             }
         }
     }
-    
+
     private var greetingSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(greetingText)
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
             if let stats = viewModel.stats {
                 Text("Pipeline ran \(stats.lastRunText)")
                     .font(.subheadline)
@@ -75,7 +90,7 @@ struct HomeView: View {
             }
         }
     }
-    
+
     private func statsRow(stats: DashboardStats) -> some View {
         HStack(spacing: 12) {
             StatCard(title: "Total Jobs", value: "\(stats.totalJobs)",    color: .indigo)
@@ -83,7 +98,7 @@ struct HomeView: View {
             StatCard(title: "Score ≥70",  value: "\(stats.jobsAbove70)", color: .orange)
         }
     }
-    
+
     private var topJobsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -96,7 +111,7 @@ struct HomeView: View {
                 .font(.subheadline)
                 .foregroundStyle(.indigo)
             }
-            
+
             if viewModel.isLoading {
                 ForEach(0..<3, id: \.self) { _ in PlaceholderJobCard() }
             } else if viewModel.topJobs.isEmpty {
@@ -116,7 +131,7 @@ struct HomeView: View {
             }
         }
     }
-    
+
     private var greetingText: String {
         let hour = Calendar.current.component(.hour, from: Date())
         switch hour {

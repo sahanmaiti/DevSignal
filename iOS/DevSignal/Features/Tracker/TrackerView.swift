@@ -1,13 +1,8 @@
-// PURPOSE:
-//   Kanban board showing all job applications grouped by stage.
+// Features/Tracker/TrackerView.swift
 //
-// LAYOUT:
-//   Horizontal ScrollView → one StageColumn per ApplicationStage
-//   Each column → vertical list of ApplicationCard views
-//   Tapping a card → ApplicationDetailSheet (move stage + add notes)
-//
-// NOTE: ApplicationStage enum is defined in Models/Application.swift
-//   It is NOT redefined here — Swift finds it automatically in the same module.
+// Premium Kanban board for the DevSignal iOS app.
+// Designed for App Store release — full-height columns, clean cards,
+// smooth stage-move interactions.
 
 import SwiftUI
 import Combine
@@ -19,271 +14,365 @@ struct TrackerView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                // Subtle gradient background
+                LinearGradient(
+                    colors: [Color(.systemGroupedBackground), Color(.systemBackground)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-                // ✅ FULL SCREEN BACKGROUND (fixed, not scrolling)
-                Color(.systemGroupedBackground)
-                    .ignoresSafeArea()
-
-                // ✅ CONTENT
-                Group {
-                    if viewModel.isLoading && viewModel.applications.isEmpty {
-                        trackerSkeleton
-                    } else if let error = viewModel.errorMessage,
-                              viewModel.applications.isEmpty {
-                        errorView(message: error)
-                    } else {
-                        kanbanBoard
-                    }
+                if viewModel.isLoading && viewModel.applications.isEmpty {
+                    loadingView
+                } else if let error = viewModel.errorMessage,
+                          viewModel.applications.isEmpty {
+                    errorView(message: error)
+                } else {
+                    kanbanBoard
                 }
             }
             .navigationTitle("Tracker")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 8) {
+                        Text("Tracker")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        if viewModel.totalCount > 0 {
+                            Text("\(viewModel.totalCount)")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.indigo.opacity(0.15))
+                                .foregroundStyle(.indigo)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    if viewModel.totalCount > 0 {
-                        Text("\(viewModel.totalCount) total")
-                            .font(.caption)
+                    Button {
+                        Task {
+                            viewModel.clearOverrides()
+                            await viewModel.refresh()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
             .task {
-                if viewModel.applications.isEmpty {
-                    await viewModel.load()
-                }
+                if viewModel.applications.isEmpty { await viewModel.load() }
             }
-            .refreshable {
-                viewModel.clearOverrides()
-                await viewModel.refresh()
-            }
-            .sheet(item: $selectedApplication) { application in
-                ApplicationDetailSheet(
-                    application: application,
-                    viewModel: viewModel
-                )
+            .sheet(item: $selectedApplication) { app in
+                ApplicationDetailSheet(application: app, viewModel: viewModel)
             }
         }
     }
 
     // ── Kanban board ──────────────────────────────────────────────────────
+    // GeometryReader measures the available height so each column can fill
+    // it exactly — this prevents the "floating small box" problem.
 
     private var kanbanBoard: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 14) {
-                ForEach(ApplicationStage.allCases) { stage in
-                    StageColumn(
-                        stage: stage,
-                        cards: viewModel.cards(for: stage),
-                        movedCardId: viewModel.movedCardId,
-                        onCardTap: { application in
-                            selectedApplication = application
-                        }
-                    )
+        GeometryReader { geo in
+            // Guard against NaN, infinity, AND zero/negative during first layout pass.
+            let rawHeight = geo.size.height - 24
+            let columnHeight: CGFloat = (rawHeight.isFinite && rawHeight > 0) ? rawHeight : 400
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(ApplicationStage.allCases) { stage in
+                        StageColumn(
+                            stage: stage,
+                            cards: viewModel.cards(for: stage),
+                            movedCardId: viewModel.movedCardId,
+                            availableHeight: columnHeight,
+                            onCardTap: { selectedApplication = $0 }
+                        )
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)      // ← add this
-            .padding(.bottom, 20)  // ← add this
         }
     }
+    // ── Loading ───────────────────────────────────────────────────────────
 
-    // ── Skeleton ──────────────────────────────────────────────────────────
-
-    private var trackerSkeleton: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 14) {
-                ForEach(ApplicationStage.allCases) { stage in
-                    StageColumnSkeleton(stage: stage)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Loading applications…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
     }
 
     // ── Error ─────────────────────────────────────────────────────────────
 
     private func errorView(message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "wifi.slash")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+        VStack(spacing: 20) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 44))
+                .foregroundStyle(.orange)
             Text(message)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Retry") {
+                .padding(.horizontal, 40)
+            Button("Try Again") {
                 Task { await viewModel.load() }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderedProminent)
+            .tint(.indigo)
         }
-        .padding(40)
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STAGE COLUMN
+// Full-height column — background extends from top to bottom of the board.
+// availableHeight is passed in from GeometryReader so every column is
+// exactly the same height regardless of card count.
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct StageColumn: View {
     let stage: ApplicationStage
     let cards: [Application]
     let movedCardId: String?
+    let availableHeight: CGFloat
     let onCardTap: (Application) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            columnHeader
+            colorBar
+            cardStack
+            Spacer(minLength: 0)
+        }
+        .frame(width: 200, height: availableHeight)
+        .background(columnBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+    }
 
-            // ── Column header ─────────────────────────────────────────────
-            HStack(spacing: 6) {
+    // ── Header ────────────────────────────────────────────────────────────
+
+    private var columnHeader: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(stage.color.opacity(0.15))
+                    .frame(width: 28, height: 28)
                 Image(systemName: stage.icon)
-                    .font(.caption)
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(stage.color)
-                Text(stage.displayName)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Spacer()
+            }
+
+            Text(stage.displayName)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            if !cards.isEmpty {
                 Text("\(cards.count)")
                     .font(.caption2)
                     .fontWeight(.bold)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(stage.color.opacity(0.15))
-                    .foregroundStyle(stage.color)
-                    .clipShape(Capsule())
+                    .frame(minWidth: 20, minHeight: 20)
+                    .background(stage.color)
+                    .foregroundStyle(.white)
+                    .clipShape(Circle())
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-            .padding(.bottom, 24)
-
-            Rectangle()
-                .fill(stage.color.opacity(0.25))
-                .frame(height: 2)
-                .padding(.horizontal, 12)
-
-            // ── Cards — NO inner ScrollView to avoid gesture conflict ──────
-            // SwiftUI eats button taps when ScrollView(.vertical) is nested
-            // inside ScrollView(.horizontal). Use VStack instead and let the
-            // outer horizontal scroll handle overflow.
-            VStack(spacing: 8) {
-                if cards.isEmpty {
-                    emptyColumnPlaceholder
-                } else {
-                    ForEach(cards) { card in
-                        ApplicationCard(
-                            application: card,
-                            isHighlighted: movedCardId == card.applicationId,
-                            onTap: { onCardTap(card) }
-                        )
-                    }
-                }
-            }
-            .padding(10)
         }
-        .frame(width: 190)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.secondarySystemBackground))
-                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .frame(minHeight: 300, alignment: .top)
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
     }
 
-    private var emptyColumnPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(
-                Color.secondary.opacity(0.2),
-                style: StrokeStyle(lineWidth: 1.5, dash: [5])
+    private var colorBar: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [stage.color.opacity(0.6), stage.color.opacity(0.2)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
             )
-            .frame(height: 80)
-            .overlay(
-                Text("None")
-                    .font(.caption)
-                    .foregroundStyle(Color.secondary.opacity(0.5))
+            .frame(height: 2)
+            .padding(.horizontal, 14)
+    }
+
+    // ── Card stack ────────────────────────────────────────────────────────
+
+    private var cardStack: some View {
+        VStack(spacing: 8) {
+            if cards.isEmpty {
+                emptyPlaceholder
+            } else {
+                ForEach(cards) { card in
+                    ApplicationCard(
+                        application: card,
+                        stage: stage,
+                        isHighlighted: movedCardId == card.applicationId,
+                        onTap: { onCardTap(card) }
+                    )
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+    }
+
+    private var emptyPlaceholder: some View {
+        VStack(spacing: 8) {
+            Image(systemName: stage.icon)
+                .font(.system(size: 22))
+                .foregroundStyle(stage.color.opacity(0.25))
+            Text("None yet")
+                .font(.caption)
+                .foregroundStyle(Color.secondary.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 90)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(
+                    style: StrokeStyle(lineWidth: 1.5, dash: [5])
+                )
+                .foregroundStyle(Color.secondary.opacity(0.2))
+        )
+    }
+
+    private var columnBackground: some View {
+        ZStack {
+            // Base fill
+            Color(.secondarySystemGroupedBackground)
+            // Subtle top tint from stage colour
+            LinearGradient(
+                colors: [stage.color.opacity(0.04), Color.clear],
+                startPoint: .top,
+                endPoint: .center
             )
+        }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPLICATION CARD
+// Premium card design with company avatar, score pill, and metadata.
+// Uses .onTapGesture instead of Button to avoid ScrollView gesture conflicts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct ApplicationCard: View {
     let application: Application
+    let stage: ApplicationStage
     let isHighlighted: Bool
     let onTap: () -> Void
 
-    var body: some View {
-        // Use onTapGesture instead of Button to avoid ScrollView gesture conflicts
-        VStack(alignment: .leading, spacing: 8) {
+    @State private var pressed = false
 
-            HStack(alignment: .top) {
-                CompanyAvatar(company: application.company)
-                    .scaleEffect(0.75)
-                    .frame(width: 36, height: 36)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ── Top row: avatar + score ───────────────────────────────────
+            HStack(alignment: .top, spacing: 0) {
+                // Company initial
+                Text(String(application.company.prefix(1)).uppercased())
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(avatarColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
                 Spacer()
+
                 if let score = application.score {
                     Text("\(score)")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.system(size: 11, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 4)
-                        .background(scoreColor(score))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .background(scorePillColor(score))
+                        .clipShape(Capsule())
                 }
             }
+            .padding(.bottom, 8)
 
+            // ── Title ─────────────────────────────────────────────────────
             Text(application.title)
-                .font(.caption)
-                .fontWeight(.semibold)
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
+                .padding(.bottom, 3)
 
+            // ── Company ───────────────────────────────────────────────────
             Text(application.company)
-                .font(.caption2)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.bottom, 8)
 
-            HStack {
+            // ── Footer ────────────────────────────────────────────────────
+            HStack(spacing: 0) {
                 if let source = application.source {
                     Text(source.capitalized)
-                        .font(.caption2)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
+                        .font(.system(size: 10, weight: .medium))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
                         .background(Color.indigo.opacity(0.1))
                         .foregroundStyle(.indigo)
                         .clipShape(Capsule())
                 }
                 Spacer()
                 Text(application.appliedAgoText)
-                    .font(.caption2)
-                    .foregroundStyle(Color.secondary.opacity(0.6))
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.secondary.opacity(0.7))
             }
         }
-        .padding(10)
-        .background(
-            isHighlighted
-                ? application.stage.color.opacity(0.15)
-                : Color(.tertiarySystemBackground)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(
-                    isHighlighted
-                        ? application.stage.color.opacity(0.5)
-                        : Color.clear,
-                    lineWidth: 1.5
-                )
-        )
-        .animation(.easeInOut(duration: 0.3), value: isHighlighted)
-        // onTapGesture works reliably inside ScrollView unlike Button
+        .padding(12)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(highlightBorder)
+        .scaleEffect(pressed ? 0.97 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: pressed)
+        .animation(.easeInOut(duration: 0.25), value: isHighlighted)
+        .contentShape(Rectangle())
         .onTapGesture { onTap() }
-        .contentShape(Rectangle())  // makes entire card area tappable
+        ._onButtonGesture(pressing: { pressing in
+            withAnimation { pressed = pressing }
+        }, perform: {})
     }
 
-    private func scoreColor(_ score: Int) -> Color {
+    private var cardBackground: some View {
+        ZStack {
+            Color(.tertiarySystemGroupedBackground)
+            if isHighlighted {
+                stage.color.opacity(0.08)
+            }
+        }
+    }
+
+    private var highlightBorder: some View {
+        RoundedRectangle(cornerRadius: 14)
+            .stroke(
+                isHighlighted ? stage.color.opacity(0.4) : Color.clear,
+                lineWidth: 1.5
+            )
+    }
+
+    private var avatarColor: Color {
+        let colors: [Color] = [.indigo, .blue, .purple, .pink, .orange, .teal, .green]
+        let index = abs(application.company.hashValue) % colors.count
+        return colors[index]
+    }
+
+    private func scorePillColor(_ score: Int) -> Color {
         switch score {
         case 80...100: return .green
         case 60..<80:  return .indigo
@@ -292,6 +381,7 @@ struct ApplicationCard: View {
         }
     }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // APPLICATION DETAIL SHEET
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,8 +392,8 @@ struct ApplicationDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var notes: String
-    @State private var isSavingNotes = false
-    @State private var notesSaved = false
+    @State private var isSaving = false
+    @State private var saved = false
 
     init(application: Application, viewModel: TrackerViewModel) {
         self.application = application
@@ -311,15 +401,11 @@ struct ApplicationDetailSheet: View {
         _notes = State(initialValue: application.notes ?? "")
     }
 
-    // Current stage: check viewModel.cards to see if the card has been
-    // optimistically moved since the sheet opened.
     private var currentStage: ApplicationStage {
         for stage in ApplicationStage.allCases {
             if viewModel.cards(for: stage).contains(where: {
                 $0.applicationId == application.applicationId
-            }) {
-                return stage
-            }
+            }) { return stage }
         }
         return application.stage
     }
@@ -327,33 +413,47 @@ struct ApplicationDetailSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
                     jobHeader
-                    stageMoverSection
+                    stageMover
                     notesSection
-                    if application.appliedAt != nil {
-                        metaSection
-                    }
+                    metaRow
                 }
                 .padding(20)
             }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Application")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                         .fontWeight(.semibold)
+                        .foregroundStyle(.indigo)
                 }
             }
         }
         .presentationDetents([.large])
+        .presentationCornerRadius(28)
     }
 
     // ── Job header ────────────────────────────────────────────────────────
 
     private var jobHeader: some View {
         HStack(spacing: 14) {
-            CompanyAvatar(company: application.company)
+            // Large company avatar
+            Text(String(application.company.prefix(1)).uppercased())
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 54, height: 54)
+                .background(
+                    LinearGradient(
+                        colors: [.indigo, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(application.title)
                     .font(.headline)
@@ -362,195 +462,170 @@ struct ApplicationDetailSheet: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
+
             Spacer()
+
             if let score = application.score {
                 ScoreBadge(score: score)
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
     // ── Stage mover ───────────────────────────────────────────────────────
 
-    private var stageMoverSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private var stageMover: some View {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Move to Stage")
                 .font(.headline)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
 
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
-                spacing: 8
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
+                spacing: 10
             ) {
                 ForEach(ApplicationStage.allCases) { stage in
-                    StageButton(
-                        stage: stage,
-                        isCurrent: currentStage == stage,
-                        onTap: {
-                            Task {
-                                await viewModel.moveCard(application, to: stage)
-                                try? await Task.sleep(nanoseconds: 400_000_000)
-                                dismiss()
-                            }
-                        }
-                    )
+                    stageButton(stage)
                 }
             }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 16)
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func stageButton(_ stage: ApplicationStage) -> some View {
+        let isCurrent = currentStage == stage
+
+        return Button {
+            Task {
+                await viewModel.moveCard(application, to: stage)
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                dismiss()
+            }
+        } label: {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(isCurrent ? stage.color : stage.color.opacity(0.12))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: stage.icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(isCurrent ? .white : stage.color)
+                }
+
+                Text(stage.displayName)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(isCurrent ? stage.color : .secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isCurrent ? stage.color.opacity(0.1) : Color(.tertiarySystemGroupedBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(isCurrent ? stage.color.opacity(0.4) : Color.clear, lineWidth: 1.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // ── Notes ─────────────────────────────────────────────────────────────
 
     private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Notes")
                     .font(.headline)
                 Spacer()
-                if isSavingNotes {
-                    ProgressView().scaleEffect(0.8)
-                } else if notesSaved {
+                if isSaving {
+                    ProgressView().scaleEffect(0.75)
+                } else if saved {
                     Label("Saved", systemImage: "checkmark.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.green)
+                        .transition(.opacity)
                 }
             }
 
             TextEditor(text: $notes)
                 .font(.subheadline)
-                .frame(minHeight: 100)
+                .frame(minHeight: 90)
                 .padding(10)
-                .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .background(Color(.tertiarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.indigo.opacity(0.2), lineWidth: 1)
+                )
 
             Button {
-                Task { await saveNotes() }
+                Task { await doSaveNotes() }
             } label: {
-                Text("Save Notes")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.indigo)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                HStack {
+                    if isSaving {
+                        ProgressView().tint(.white).scaleEffect(0.8)
+                    } else {
+                        Text("Save Notes")
+                            .fontWeight(.semibold)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.indigo)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .disabled(isSavingNotes)
+            .disabled(isSaving)
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
-    // ── Meta info ─────────────────────────────────────────────────────────
+    // ── Meta row ──────────────────────────────────────────────────────────
 
-    private var metaSection: some View {
+    private var metaRow: some View {
         HStack {
-            Label("Applied \(application.appliedAgoText)", systemImage: "calendar")
+            Label(application.appliedAgoText, systemImage: "calendar")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
             if let source = application.source {
                 Text(source.capitalized)
                     .font(.caption)
-                    .foregroundStyle(Color.secondary.opacity(0.6))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.indigo.opacity(0.1))
+                    .foregroundStyle(.indigo)
+                    .clipShape(Capsule())
             }
         }
-        .padding(14)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    // ── Save notes action ─────────────────────────────────────────────────
+    // ── Actions ───────────────────────────────────────────────────────────
 
-    private func saveNotes() async {
-        isSavingNotes = true
+    private func doSaveNotes() async {
+        isSaving = true
         await viewModel.saveNotes(for: application, notes: notes)
-        isSavingNotes = false
-        withAnimation { notesSaved = true }
+        isSaving = false
+        withAnimation { saved = true }
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            withAnimation { notesSaved = false }
+            withAnimation { saved = false }
         }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STAGE BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
-
-struct StageButton: View {
-    let stage: ApplicationStage
-    let isCurrent: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 5) {
-                Image(systemName: stage.icon)
-                    .font(.system(size: 16))
-                Text(stage.displayName)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(isCurrent ? stage.color : stage.color.opacity(0.1))
-            .foregroundStyle(isCurrent ? Color.white : stage.color)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(
-                        isCurrent ? Color.clear : stage.color.opacity(0.3),
-                        lineWidth: 1
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STAGE COLUMN SKELETON
-// ─────────────────────────────────────────────────────────────────────────────
-
-struct StageColumnSkeleton: View {
-    let stage: ApplicationStage
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.secondary.opacity(0.2))
-                    .frame(width: 80, height: 12)
-                Spacer()
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.15))
-                    .frame(width: 24, height: 18)
-            }
-            .padding(12)
-
-            Rectangle()
-                .fill(Color.secondary.opacity(0.1))
-                .frame(height: 2)
-                .padding(.horizontal, 12)
-
-            VStack(spacing: 8) {
-                ForEach(0..<2, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.secondary.opacity(0.1))
-                        .frame(height: 90)
-                }
-            }
-            .padding(10)
-        }
-        .frame(width: 190)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .frame(minHeight: 300, alignment: .top)
     }
 }
 
