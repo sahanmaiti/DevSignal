@@ -359,8 +359,6 @@ def get_applications():
     """Returns all application records with joined job info."""
     try:
         applications = db_client.get_all_applications()
-        
-        # Format each application for the iOS app
         result = []
         for app_row in applications:
             result.append({
@@ -368,16 +366,16 @@ def get_applications():
                 "job_id":         app_row.get("job_id"),
                 "company":        app_row.get("company"),
                 "title":          app_row.get("title"),
-                "score":          app_row.get("score"),
-                "source":         app_row.get("source"),
-                "stage":          app_row.get("stage"),
-                "applied_at":     app_row.get("applied_at").isoformat() if app_row.get("applied_at") else None,
+                "score":          app_row.get("score") or app_row.get("opportunity_score"),
+                "source":         app_row.get("source") or app_row.get("job_source"),
+                "stage":          app_row.get("stage", "applied"),
+                "applied_at":     app_row.get("applied_at").isoformat()
+                                if app_row.get("applied_at") else None,
                 "notes":          app_row.get("notes"),
-                "updated_at":     app_row.get("updated_at").isoformat() if app_row.get("updated_at") else None,
+                "updated_at":     app_row.get("updated_at").isoformat()
+                                if app_row.get("updated_at") else None,
             })
-        
         return result
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 

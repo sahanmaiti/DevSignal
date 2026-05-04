@@ -132,6 +132,40 @@ final class APIClient {
         }
     }
     
+    // Overload for requests where we don't care about the response body.
+    // Sends the request, checks the status code, discards the JSON.
+    @discardableResult
+    private func send(
+        path: String,
+        method: String,
+        body: Data? = nil
+    ) async throws -> Bool {
+        let request = try makeRequest(path: path, method: method, body: body)
+        
+        let (_, response): (Data, URLResponse)
+        do {
+            (_, response) = try await URLSession.shared.data(for: request)
+        } catch let urlError as URLError {
+            if urlError.code == .notConnectedToInternet ||
+               urlError.code == .networkConnectionLost {
+                throw APIError.networkUnavailable
+            }
+            throw APIError.unknown(urlError.localizedDescription)
+        }
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.unknown("Invalid response")
+        }
+        
+        switch httpResponse.statusCode {
+        case 200...299: return true
+        case 401: throw APIError.unauthorized
+        case 404: throw APIError.notFound
+        case 500...599: throw APIError.serverError(httpResponse.statusCode)
+        default: throw APIError.unknown("HTTP \(httpResponse.statusCode)")
+        }
+    }
+    
     // ─────────────────────────────────────────────────────────────────────
     // PUBLIC ENDPOINT METHODS
     // One method per API endpoint. Clean, readable, typed.
@@ -210,11 +244,42 @@ final class APIClient {
     
     func applyToJob(jobId: String, stage: String) async throws {
         let body = try JSONEncoder().encode(["stage": stage])
-        // We use Void as T because we only care if it succeeds, not the response
-        let _: [String: String] = try await fetch(
+        try await send(
             path: "/jobs/\(jobId)/apply",
             method: "POST",
             body: body
+        )
+    }
+    
+    // ── GET /applications ─────────────────────────────────────────────────────
+    // Returns all application records joined with job title/company/score.
+    // Called by TrackerViewModel on load and refresh.
+
+    func fetchApplications() async throws -> [Application] {
+        return try await fetch(path: "/applications")
+    }
+
+    // ── PATCH /applications/{id} ──────────────────────────────────────────────
+    // Updates the stage (and optionally notes) for an application.
+    // Called when the user moves a card to a new column or adds a note.
+    //
+    // We send only the fields that changed — PATCH means partial update.
+
+    func updateApplication(
+        applicationId: String,
+        stage: String? = nil,
+        notes: String? = nil
+    ) async throws {
+        var body: [String: String] = [:]
+        if let stage { body["stage"] = stage }
+        if let notes { body["notes"] = notes }
+
+        let data = try JSONEncoder().encode(body)
+
+        try await send(
+            path: "/applications/\(applicationId)",
+            method: "PATCH",
+            body: data
         )
     }
     
