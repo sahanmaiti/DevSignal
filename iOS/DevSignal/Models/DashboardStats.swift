@@ -34,7 +34,7 @@ struct DashboardStats: Decodable {
 
     var lastRunText: String {
         guard let pipelineLastRun,
-              let date = ISO8601DateFormatter().date(from: pipelineLastRun) else {
+              let date = Self.parsePipelineDate(pipelineLastRun) else {
             return "Never"
         }
         let hours = Calendar.current.dateComponents([.hour], from: date, to: Date()).hour ?? 0
@@ -42,6 +42,29 @@ struct DashboardStats: Decodable {
         if hours == 1 { return "1 hour ago" }
         if hours < 24 { return "\(hours) hours ago" }
         return "\(hours / 24)d ago"
+    }
+
+    private static func parsePipelineDate(_ raw: String) -> Date? {
+        let isoWithFractional = ISO8601DateFormatter()
+        isoWithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoWithFractional.date(from: raw) {
+            return date
+        }
+
+        let iso = ISO8601DateFormatter()
+        if let date = iso.date(from: raw) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        if let date = formatter.date(from: raw) {
+            return date
+        }
+
+        return nil
     }
 }
 

@@ -57,7 +57,7 @@ struct MainTabView: View {
                     }
                     .tag(4)
             }
-            .tint(.indigo)
+            .tint(.dsAccent)
     }
 }
 

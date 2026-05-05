@@ -16,7 +16,7 @@ struct TrackerView: View {
             ZStack {
                 // Subtle gradient background
                 LinearGradient(
-                    colors: [Color(.systemGroupedBackground), Color(.systemBackground)],
+                    colors: [Color.dsBackground, Color.dsPlainBackground],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -157,7 +157,7 @@ struct StageColumn: View {
         .frame(width: 200, height: availableHeight)
         .background(columnBackground)
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+        .shadow(color: Color.dsMuted.opacity(0.22), radius: 8, x: 0, y: 2)
     }
 
     // ── Header ────────────────────────────────────────────────────────────
@@ -252,7 +252,7 @@ struct StageColumn: View {
     private var columnBackground: some View {
         ZStack {
             // Base fill
-            Color(.secondarySystemGroupedBackground)
+            Color.dsGroupedSurface
             // Subtle top tint from stage colour
             LinearGradient(
                 colors: [stage.color.opacity(0.04), Color.clear],
@@ -293,7 +293,7 @@ struct ApplicationCard: View {
 
                 if let score = application.score {
                     Text("\(score)")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 4)
@@ -351,7 +351,7 @@ struct ApplicationCard: View {
 
     private var cardBackground: some View {
         ZStack {
-            Color(.tertiarySystemGroupedBackground)
+            Color.dsElevatedGroupedSurface
             if isHighlighted {
                 stage.color.opacity(0.08)
             }
@@ -421,7 +421,7 @@ struct ApplicationDetailSheet: View {
                 }
                 .padding(20)
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .background(Color.dsBackground.ignoresSafeArea())
             .navigationTitle("Application")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -470,7 +470,7 @@ struct ApplicationDetailSheet: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.dsGroupedSurface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -494,7 +494,7 @@ struct ApplicationDetailSheet: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 16)
         }
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.dsGroupedSurface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -528,7 +528,7 @@ struct ApplicationDetailSheet: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isCurrent ? stage.color.opacity(0.1) : Color(.tertiarySystemGroupedBackground))
+                    .fill(isCurrent ? stage.color.opacity(0.1) : Color.dsElevatedGroupedSurface)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(isCurrent ? stage.color.opacity(0.4) : Color.clear, lineWidth: 1.5)
@@ -560,7 +560,7 @@ struct ApplicationDetailSheet: View {
                 .font(.subheadline)
                 .frame(minHeight: 90)
                 .padding(10)
-                .background(Color(.tertiarySystemGroupedBackground))
+                .background(Color.dsElevatedGroupedSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
@@ -587,7 +587,7 @@ struct ApplicationDetailSheet: View {
             .disabled(isSaving)
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.dsGroupedSurface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -611,7 +611,7 @@ struct ApplicationDetailSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.dsGroupedSurface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 

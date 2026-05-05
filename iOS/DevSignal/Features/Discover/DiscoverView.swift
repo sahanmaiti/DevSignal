@@ -218,7 +218,7 @@ struct JobRow: View {
             ScoreBadge(score: job.displayScore)
         }
         .padding(14)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }

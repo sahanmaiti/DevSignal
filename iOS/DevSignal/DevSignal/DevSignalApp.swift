@@ -1,25 +1,40 @@
-// PURPOSE: App entry point. Sets up the environment and shows the root view.
+// PURPOSE:
+//   App entry point. Checks if credentials exist in Keychain.
+//   If yes → show main TabView.
+//   If no  → show OnboardingView.
 //
-// @main tells Swift "this struct is where the app starts"
-// WindowGroup is SwiftUI's container for the main window
+// The switch between onboarding and main app is driven by
+// AppEnvironment.isConfigured. When onboarding saves credentials,
+// isConfigured becomes true and SwiftUI automatically shows MainTabView.
 
 import SwiftUI
 
 @main
 struct DevSignalApp: App {
-
-    // The shared environment object — created once here and passed
-    // down to every view in the app automatically via .environment()
     private let environment = AppEnvironment.shared
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
-                // .environment() injects the environment object into
-                // the SwiftUI view hierarchy. Any child view can access
-                // it with @Environment(AppEnvironment.self)
+            AppRouter()
                 .environment(environment)
-                .preferredColorScheme(environment.preferredColorScheme)
         }
     }
 }
+
+struct AppRouter: View {
+    @Environment(AppEnvironment.self) private var env
+
+    var body: some View {
+        Group {
+            if env.isConfigured {
+                MainTabView()
+                    .transition(.opacity)
+            } else {
+                OnboardingView()
+                    .transition(.opacity)
+            }
+        }
+        .preferredColorScheme(env.appearanceMode.colorScheme)
+    }
+}
+

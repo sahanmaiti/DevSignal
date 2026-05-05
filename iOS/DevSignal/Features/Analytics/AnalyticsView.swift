@@ -8,7 +8,7 @@ struct AnalyticsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color.dsBackground.ignoresSafeArea()
 
                 if viewModel.isLoading && viewModel.stats == nil {
                     loadingView
@@ -291,7 +291,7 @@ struct SectionCard<Content: View>: View {
             content()
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.dsGroupedSurface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
@@ -328,7 +328,7 @@ struct KPICard: View {
                 .foregroundStyle(.secondary)
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.dsGroupedSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }

@@ -65,7 +65,7 @@ struct PlaceholderJobCard: View {
                 .frame(width: 36, height: 36)
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -106,7 +106,7 @@ struct DiscoverPlaceholderRow: View {
                 .frame(width: 40, height: 40)
         }
         .padding(14)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }

@@ -22,7 +22,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
-    @Environment(AppEnvironment.self) private var environment
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -50,17 +50,16 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    @Bindable var bindableEnvironment = environment
-                    Menu {
-                        Picker("Appearance", selection: $bindableEnvironment.appearanceModeRaw) {
-                            ForEach(AppearanceMode.allCases) { mode in
-                                Text(mode.title).tag(mode.rawValue)
-                            }
-                        }
+                    Button {
+                        showSettings = true
                     } label: {
-                        Image(systemName: "circle.lefthalf.filled")
+                        Image(systemName: "gearshape.fill")
+                            .foregroundStyle(.secondary)
                     }
                 }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
             .task {
                 if viewModel.stats == nil {

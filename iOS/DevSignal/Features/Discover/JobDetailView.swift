@@ -101,7 +101,7 @@ struct JobDetailView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -141,7 +141,7 @@ struct JobDetailView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color.dsSurface)
                     .foregroundStyle(.primary)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -208,7 +208,7 @@ struct JobDetailView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -240,7 +240,7 @@ struct JobDetailView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -259,7 +259,7 @@ struct JobDetailView: View {
                 }
             }
             .padding(16)
-            .background(Color(.secondarySystemBackground))
+            .background(Color.dsSurface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         // Description not shown if not available — keeps UI clean
@@ -294,7 +294,7 @@ struct JobDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(10)
-                    .background(Color(.tertiarySystemBackground))
+                    .background(Color.dsElevatedSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
@@ -310,7 +310,7 @@ struct JobDetailView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -384,7 +384,7 @@ struct OutreachDetailSheet: View {
                         ScoreBadge(score: job.displayScore)
                     }
                     .padding(16)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color.dsSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
 
                     // ── Recruiter contact ─────────────────────────────────
@@ -462,7 +462,7 @@ struct OutreachDetailSheet: View {
             }
         }
         .padding(14)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
@@ -484,7 +484,7 @@ struct OutreachDetailSheet: View {
                 .font(.subheadline)
                 .frame(minHeight: 160)
                 .padding(12)
-                .background(Color(.secondarySystemBackground))
+                .background(Color.dsSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)

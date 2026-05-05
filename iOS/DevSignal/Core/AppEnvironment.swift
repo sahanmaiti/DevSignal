@@ -1,18 +1,10 @@
 // PURPOSE:
-//   A single place that holds app-wide configuration: the API base URL
-//   and API key. Every part of the app that needs to make a network call
-//   reads from this object.
+//   Single source of truth for app-wide configuration.
+//   Loads credentials from Keychain on init.
+//   Falls back to hardcoded dev values if no Keychain entry exists.
 //
-// WHY A CLASS AND NOT A STRUCT?
-//   We use `class` with @Observable so the same instance can be shared
-//   across the whole app and any change (like updating the API key)
-//   automatically updates every screen that reads from it.
-//
-// OBSERVABLE:
-//   @Observable is Swift's modern way to make a class reactive.
-//   When a property marked with @Observable changes, any SwiftUI view
-//   that reads it will automatically redraw. Similar to @State but
-//   for objects shared across multiple views.
+// On first launch: no Keychain entry → isConfigured = false → show Onboarding
+// After onboarding: Keychain entry saved → isConfigured = true → show main app
 
 import Foundation
 import SwiftUI
@@ -43,42 +35,49 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
 @Observable
 class AppEnvironment {
+    static let shared = AppEnvironment()
 
-    // The base URL of your FastAPI server.
-    // During development this points to localhost (your Mac).
-    // The iOS Simulator on the same Mac can reach localhost directly.
-    // For a real device, you'd use your Mac's local IP (e.g. 192.168.1.x)
-    var baseURL: String = "http://127.0.0.1:8000"
-
-    // The API key that matches PIPELINE_API_KEY in your .env file
-    var apiKey: String = "devsignal-local-key-2024"
-
-    // Persisted appearance mode for a global light/dark/system override.
-    var appearanceModeRaw: String = UserDefaults.standard.string(forKey: "appearance_mode") ?? AppearanceMode.system.rawValue {
-        didSet {
-            UserDefaults.standard.set(appearanceModeRaw, forKey: "appearance_mode")
-        }
-    }
-
-    // isConfigured: true when both URL and key are set.
-    // We'll use this later to show an onboarding screen on first launch.
-    var isConfigured: Bool {
-        !baseURL.isEmpty && !apiKey.isEmpty
-    }
+    var baseURL: String
+    var apiKey: String
+    var appearanceModeRaw: String
 
     var appearanceMode: AppearanceMode {
         get { AppearanceMode(rawValue: appearanceModeRaw) ?? .system }
         set { appearanceModeRaw = newValue.rawValue }
     }
 
-    var preferredColorScheme: ColorScheme? {
-        appearanceMode.colorScheme
+    // True when both values are set — drives onboarding vs main app routing
+    var isConfigured: Bool {
+        !baseURL.isEmpty && !apiKey.isEmpty
     }
 
-    // Singleton: one shared instance for the whole app.
-    // Any file can access AppEnvironment.shared
-    static let shared = AppEnvironment()
+    private init() {
+        // Load from Keychain — returns nil if first launch
+        self.baseURL = KeychainManager.load(.baseURL) ?? ""
+        self.apiKey  = KeychainManager.load(.apiKey)  ?? ""
+        self.appearanceModeRaw = UserDefaults.standard.string(forKey: "appearance_mode") ?? AppearanceMode.system.rawValue
+    }
 
-    // Private init prevents accidental creation of extra instances
-    private init() {}
+    // ── Called after successful onboarding validation ─────────────────────
+
+    func saveCredentials(baseURL: String, apiKey: String) throws {
+        try KeychainManager.save(baseURL, for: .baseURL)
+        try KeychainManager.save(apiKey,  for: .apiKey)
+        self.baseURL = baseURL
+        self.apiKey  = apiKey
+    }
+
+    // ── Reset (used in Settings → "Sign out") ────────────────────────────
+
+    func clearCredentials() {
+        KeychainManager.clearAll()
+        self.baseURL = ""
+        self.apiKey  = ""
+    }
+
+    func updateAppearanceMode(_ mode: AppearanceMode) {
+        appearanceModeRaw = mode.rawValue
+        UserDefaults.standard.set(mode.rawValue, forKey: "appearance_mode")
+    }
 }
+

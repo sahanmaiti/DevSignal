@@ -146,7 +146,7 @@ struct OutreachCard: View {
                 expandedContent
             }
         }
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .animation(.easeInOut(duration: 0.25), value: isExpanded)
     }
@@ -281,7 +281,7 @@ struct OutreachCard: View {
                     .font(.subheadline)
                     .frame(minHeight: 120)
                     .padding(10)
-                    .background(Color(.tertiarySystemBackground))
+                    .background(Color.dsElevatedSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(alignment: .bottomTrailing) {
                         Text("\(editableMessage.count)/300")
@@ -300,7 +300,7 @@ struct OutreachCard: View {
                     .foregroundStyle(.primary)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.tertiarySystemBackground))
+                    .background(Color.dsElevatedSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
@@ -337,7 +337,7 @@ struct OutreachCard: View {
                     .fontWeight(.medium)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(Color(.tertiarySystemBackground))
+                    .background(Color.dsElevatedSurface)
                     .foregroundStyle(.primary)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
@@ -378,7 +378,7 @@ struct OutreachSkeletonCard: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(Color.dsSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
