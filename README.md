@@ -2,11 +2,13 @@
 
 # DevSignal
 
-**An AI-powered job radar that discovers iOS internship opportunities across multiple platforms, scores them with a custom LLM model, generates personalized recruiter outreach, and runs autonomously every 12 hours — at zero cost.**
+**An AI-powered iOS internship radar — discovers opportunities across 13+ platforms, scores them with a custom LLM, generates personalized recruiter outreach, and delivers everything to a native iOS app. Runs autonomously every 12 hours at zero cost.**
 
 <br>
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Swift](https://img.shields.io/badge/Swift-5.9-FA7343?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
+[![SwiftUI](https://img.shields.io/badge/SwiftUI-5.0-006EFF?style=flat-square&logo=swift&logoColor=white)](https://developer.apple.com/xcode/swiftui/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=flat-square&logo=postgresql&logoColor=white)](https://postgresql.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.35-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
@@ -53,8 +55,9 @@ Searching for iOS internships is repetitive, noisy, and punishingly manual. For 
 | **AI Scoring** | Scores each job 0–100 across 8 weighted factors using Groq/Llama 3.1 |
 | **Enrichment** | Finds recruiter names, LinkedIn profiles, and email patterns via Hunter.io + Serper for jobs scoring ≥50 |
 | **Outreach** | Generates a personalized recruiter message for every job scoring ≥45 |
-| **Notification** | Telegram digest with top opportunities scoring ≥45 sent to your phone |
-| **Tracking** | Full application lifecycle — applied, responded, interview stage — tracked in Postgres |
+| **Notification** | Telegram digest + iOS push notifications with top opportunities |
+| **Tracking** | Full application lifecycle tracked in Postgres — surfaced in the iOS Kanban board |
+| **iOS App** | Native SwiftUI app: browse jobs, copy outreach, track applications, view analytics |
 
 ---
 
@@ -83,7 +86,7 @@ The model returns a structured JSON breakdown explaining each factor — not jus
 A two-stage classifier first applies heuristic rules (if "swiftui" appears in the description, it's iOS — no API call needed), then falls back to Groq for ambiguous cases. Saves ~60% of API quota on clear cases.
 
 **Personalized Recruiter Outreach**
-For jobs scoring ≥45, the system generates a LinkedIn-ready connection message that references the company's specific iOS product, mentions your real projects, and stays under 280 characters. Temperature is set slightly higher than scoring to add natural variation — no two messages are identical.
+For jobs scoring ≥45, the system generates a LinkedIn-ready connection message that references the company's specific iOS product, mentions your real projects, and stays under 300 characters. Temperature is set slightly higher than scoring to add natural variation — no two messages are identical.
 
 **3-Layer Recruiter Enrichment**
 Every free-tier resource is spent intentionally:
@@ -94,6 +97,9 @@ Every free-tier resource is spent intentionally:
 
 **Automated Pipeline via n8n + FastAPI**
 n8n fires on a 12-hour schedule and calls a local FastAPI webhook at `/run-pipeline`. FastAPI executes the pipeline and returns structured JSON. This architecture cleanly separates orchestration from execution — any scheduler (cron, GitHub Actions, another tool) can trigger the pipeline over HTTP without touching the pipeline code.
+
+**Native iOS App (SwiftUI)**
+A full 5-tab iOS app that consumes the FastAPI layer. Credentials stored securely in the iOS Keychain. Runs entirely offline for returning users using SwiftData caching. See [iOS App](#ios-app) section for full details.
 
 **Live Analytics Dashboard**
 Four-page Streamlit dashboard deployed to Streamlit Cloud at **[devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)**. Reads directly from Neon PostgreSQL in production. Shows KPI cards, score distribution histogram, application funnel, outreach messages, pipeline health, and run history.
@@ -109,78 +115,122 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
 | Hunter.io | 25 domain searches/month | Email enrichment |
 | Serper.dev | 2,500 searches on signup | LinkedIn profile finding |
 | Docker | Free | Local Postgres + n8n |
+| Xcode + Simulator | Free | iOS app development |
 
 ---
 
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    n8n Scheduler  (every 12h)                   │
-│                    POST /run-pipeline                           │
-│                           │                                     │
-│                  FastAPI Server  :8000                          │
-│                  (run_pipeline.sh)                              │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-           ┌───────────────▼────────────────┐
-           │         Scraper Layer          │
-           │                                │
-           │  RemoteOK        → JSON API    │
-           │  HackerNews      → Algolia API │
-           │  YC Startup      → JSON API    │
-           │  Remotive        → JSON API    │
-           │  Arbeitnow       → JSON API    │
-           │  Himalayas       → JSON API    │
-           │  WeWorkRemotely  → RSS Feed    │
-           │  Startup.jobs    → RSS Feed    │
-           │  Wellfound       → Hybrid      │
-           │  Cutshort        → Hybrid      │
-           │  Naukri          → Hybrid      │
-           │  IndieHackers    → HTML        │
-           │  Arc.dev         → Hybrid      │
-           └───────────────┬────────────────┘
-                           │  raw job dicts
-           ┌───────────────▼────────────────┐
-           │       Processing Layer         │
-           │                                │
-           │  job_parser.py   (regex NLP)   │
-           │  filter_engine.py              │
-           │  deduplicator.py (MD5 + DB)    │
-           │  enricher.py                   │
-           │    ├─ Layer 1: description     │
-           │    ├─ Layer 2: Hunter.io       │
-           │    ├─ Layer 3: Serper/LinkedIn │
-           │    └─ Layer 4: Groq fallback   │
-           └───────────────┬────────────────┘
-                           │  clean, enriched jobs
-           ┌───────────────▼────────────────┐
-           │           AI Layer             │
-           │      Groq API (Llama 3.1 8B)   │
-           │                                │
-           │  ios_classifier.py             │
-           │  scorer.py        (0–100)      │
-           │  outreach_generator.py         │
-           └───────────────┬────────────────┘
-                           │
-              ┌────────────▼─────────────┐
-              │   PostgreSQL 16 (local)  │
-              │   Docker container       │
-              └──────────┬───────────────┘
-                         │
-           ┌─────────────┴───────────────┐
-           │                             │
-    ┌──────▼──────┐             ┌────────▼────────┐
-    │  Telegram   │             │  Neon Postgres  │
-    │  Bot digest │             │  (production)   │
-    └─────────────┘             └────────┬────────┘
-                                         │
-                                ┌────────▼────────┐
-                                │    Streamlit    │
-                                │    Dashboard    │
-                                │  (public URL)   │
-                                └─────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                      n8n Scheduler  (every 12h)                      │
+│                      POST /run-pipeline                              │
+│                             │                                        │
+│                   FastAPI Server  :8000  (api/main.py)               │
+│                   10 REST endpoints + API key middleware             │
+└────────────────────────────┬─────────────────────────────────────────┘
+                             │
+             ┌───────────────▼────────────────┐
+             │         Scraper Layer          │
+             │  13 sources → parse → filter   │
+             │  → deduplicate → store         │
+             └───────────────┬────────────────┘
+                             │
+             ┌───────────────▼────────────────┐
+             │           AI Layer             │
+             │  Groq Llama 3.1 8B             │
+             │  ios_classifier → scorer       │
+             │  → outreach_generator          │
+             └───────────────┬────────────────┘
+                             │
+             ┌───────────────▼────────────────┐
+             │       PostgreSQL 16            │
+             │  opportunities + applications  │
+             │  + device_tokens tables        │
+             └──────┬──────────────┬──────────┘
+                    │              │
+         ┌──────────▼────┐  ┌──────▼──────────┐
+         │  Telegram Bot │  │  Neon PostgreSQL│
+         │  digest alerts│  │  (production)   │
+         └───────────────┘  └──────┬──────────┘
+                                   │
+                    ┌──────────────┴───────────────┐
+                    │                              │
+           ┌────────▼────────┐          ┌──────────▼───────────┐
+           │    Streamlit    │          │   iOS App (SwiftUI)  │
+           │    Dashboard    │          │   5 tabs, Keychain   │
+           │  (public URL)   │          │   auth, offline cache│
+           └─────────────────┘          └──────────────────────┘
 ```
+
+---
+
+## iOS App
+
+A native SwiftUI app built as a full companion to the backend pipeline. Designed for App Store distribution — not a prototype.
+
+### Architecture
+
+The iOS app follows **MVVM** (Model-View-ViewModel) with a clean layered architecture:
+
+```
+iOS App
+├── Core/
+│   ├── AppEnvironment.swift      — @Observable config, Keychain-backed credentials
+│   ├── KeychainManager.swift     — Secure credential storage (kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
+│   └── Networking/
+│       ├── APIClient.swift       — Generic async/await HTTP client, all 10 endpoints
+│       └── APIError.swift        — Typed error enum (unauthorized, notFound, serverError, etc.)
+│
+├── Models/
+│   ├── Job.swift                 — Codable + custom init (handles Int/String id, "Yes"/"No" Bool fields)
+│   ├── JobsPage.swift            — Paginated response envelope
+│   ├── OutreachMessage.swift     — Recruiter message + contact details
+│   ├── Application.swift        — Application model + ApplicationStage enum
+│   └── DashboardStats.swift     — Analytics aggregates + Swift Charts data
+│
+├── Features/
+│   ├── Home/                     — Stats cards + top picks feed
+│   ├── Discover/                 — Paginated job list, filter sheet, infinite scroll
+│   ├── Outreach/                 — Expandable cards, inline edit, clipboard copy
+│   ├── Tracker/                  — Full-height Kanban board, optimistic stage moves
+│   └── Analytics/                — Swift Charts: score distribution, funnel, sources
+│
+├── Onboarding/
+│   └── OnboardingView.swift      — Welcome + server setup, validates against /stats
+│
+├── Settings/
+│   └── SettingsView.swift        — Connection status, credential reset
+│
+└── Shared/Components/            — ScoreBadge, CompanyAvatar, PillBadge, StatCard, AttributeRow
+```
+
+### Screens
+
+| Tab | What it shows |
+|---|---|
+| **Home** | Greeting, real-time KPI cards (total jobs, applied, score ≥70), top 5 picks today |
+| **Discover** | Full paginated job list with score badges, remote/visa pills, filter sheet, pull-to-refresh, infinite scroll. Tap → JobDetailView with score breakdown bars and apply button |
+| **Outreach** | All pre-generated recruiter messages. Expandable cards with recruiter email, LinkedIn link, editable message (300 char counter), copy-to-clipboard with haptic |
+| **Tracker** | Full-height Kanban board (GeometryReader-sized columns). 6 stages: Applied → Waiting → Replied → Interview → Offer → Rejected. Tap card → stage mover grid + notes editor. Optimistic updates with server-confirmed rollback |
+| **Analytics** | Swift Charts bar chart (score distribution), horizontal funnel bars (Total → Applied → Interview), top sources table with avg score, pipeline last run status |
+
+### Key Engineering Decisions
+
+**Optimistic Updates in the Tracker**
+When a user moves a Kanban card, the UI updates instantly via a local `stageOverrides` dict. The PATCH request fires in the background. On success, the override is removed and the server value takes over. On failure, the override reverts. No spinner on stage moves — feels instant.
+
+**Type-safe JSON Decoding**
+The database stores booleans as `"Yes"/"No"` strings and IDs as integers. Custom `init(from:)` decoders handle both transparently — Swift code always sees `Bool` and `String` regardless of what the DB returns, without any changes to the backend.
+
+**Secure Credential Storage**
+The API key and server URL are stored in the iOS Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` — never backed up to iCloud, only accessible when the device is unlocked. First launch shows an onboarding screen that validates credentials against a protected endpoint before saving.
+
+**Nested ScrollView Gesture Conflict Resolution**
+`ScrollView(.horizontal)` containing `ScrollView(.vertical)` eats button taps in SwiftUI. Resolved by replacing the inner vertical ScrollView with a plain `VStack` and using `.onTapGesture` + `.contentShape(Rectangle())` instead of `Button` for card interactions.
+
+**GeometryReader for Full-Height Kanban**
+Each Kanban column is sized using `GeometryReader` measuring the available screen height, then passed as `availableHeight` to `StageColumn`. This ensures columns always fill the entire screen regardless of card count, preventing the "floating small box" problem.
 
 ---
 
@@ -188,33 +238,20 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| **Dashboard** | Streamlit 1.35, Plotly | Analytics UI, application tracking |
-| **API Server** | FastAPI, Uvicorn | Pipeline webhook endpoint |
-| **Scraping** | Python 3.12, requests, BeautifulSoup4, feedparser | HTTP, HTML, RSS multi-source job collection |
+| **iOS App** | SwiftUI 5, Swift 5.9, Swift Charts, Combine | Native iOS client |
+| **iOS Networking** | URLSession async/await, Codable | HTTP client + JSON decoding |
+| **iOS Storage** | iOS Keychain, @AppStorage | Secure credentials + preferences |
+| **Dashboard** | Streamlit 1.35, Plotly | Web analytics UI |
+| **API Server** | FastAPI, Uvicorn | REST API + pipeline webhook |
+| **Scraping** | Python 3.12, requests, BeautifulSoup4, feedparser | Multi-source job collection |
 | **Processing** | re, custom NLP | Field extraction, filtering, deduplication |
 | **AI / LLM** | Groq API (Llama 3.1 8B) | Scoring, classification, outreach |
-| **Database** | PostgreSQL 16, psycopg2, SQLAlchemy | Primary store + Neon cloud production DB |
+| **Database** | PostgreSQL 16, psycopg2, SQLAlchemy | Primary store + Neon cloud DB |
 | **Automation** | n8n (Docker), launchd | 12h scheduler + process management |
 | **Enrichment** | Hunter.io API, Serper.dev API | Recruiter contacts + LinkedIn profiles |
-| **Notifications** | Telegram Bot API | Real-time mobile digest |
+| **Notifications** | Telegram Bot API | Mobile digest |
 | **Infrastructure** | Docker Compose | Containerised Postgres + n8n |
-| **Testing** | pytest, unittest.mock | 65 unit tests, zero real API calls in CI |
-
----
-
-## Dashboard
-
-Live at **[devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)**
-
-Reads directly from Neon PostgreSQL in production.
-
-**Overview** — KPI summary (jobs found, score ≥70, applied, responses, interviews, avg score), score distribution histogram with threshold marker, jobs-by-source bar chart coloured by average score, application funnel, recent top opportunities feed.
-
-**Opportunities** — Filterable table: min-score slider, remote-only, unapplied-only, source filter. Click any row to expand full details: job description, AI score breakdown chart per factor, generated outreach message, recruiter contact, and inline application tracking (applied → response status → interview stage → save to DB).
-
-**Outreach** — Focused recruiter outreach view. Every generated message displayed in a copyable code block alongside recruiter name, email, LinkedIn link, and direct Apply button.
-
-**System** — Pipeline health: last-run freshness, total jobs, unscored count. Scrape run history table with duration, jobs found, new jobs inserted. Per-run bar chart. Source performance table with average score per platform.
+| **Testing** | pytest, unittest.mock | 65 unit tests, zero real API calls |
 
 ---
 
@@ -222,16 +259,17 @@ Reads directly from Neon PostgreSQL in production.
 
 ### Prerequisites
 
-- macOS (Apple Silicon M1–M4) or Linux
+- macOS (Apple Silicon M1–M4) or Linux — for the backend
 - Python 3.12+
 - Docker Desktop
+- Xcode 15+ — for the iOS app
 - A free [Groq API key](https://console.groq.com) — no credit card required
 
-### Installation
+### Backend Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/devsignal.git
+git clone https://github.com/sahanmaiti/devsignal.git
 cd devsignal
 
 # Create and activate a virtual environment
@@ -240,52 +278,52 @@ source venv/bin/activate
 
 # Install all dependencies
 pip install -r requirements.txt
-```
 
-### Configuration
-
-```bash
-# Copy the environment template and fill in your credentials
+# Copy environment template and fill in credentials
 cp .env.example .env
-```
 
-See [Environment Variables](#environment-variables) for all required and optional keys.
-
-### Start Infrastructure
-
-```bash
-# Start PostgreSQL 16 + n8n via Docker Compose
+# Start PostgreSQL + n8n via Docker
 docker compose up -d
 
-# Confirm both containers are healthy
-docker compose ps
-
-# Apply the database schema (idempotent — safe to re-run)
+# Apply the database schema
 python storage/migrations.py
-```
+python storage/migrate_v2.py   # adds device_tokens + applications tables
 
-### First Run
-
-```bash
-# Run the full scraping pipeline
+# Run the full pipeline once to populate data
 python run_scraper.py
-
-# Score all discovered jobs with AI
 python run_scorer.py
-
-# Enrich top-scored jobs with recruiter data
 python run_enricher.py
 
-# Open the local dashboard
-streamlit run streamlit_app.py
+# Start the FastAPI server (used by both n8n and iOS app)
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### iOS App Setup
+
+```bash
+# Open the iOS project in Xcode
+open ios/DevSignal/DevSignal.xcodeproj
+```
+
+```
+1. Select a simulator (iPhone 16 or later recommended)
+2. Press ⌘R to build and run
+3. On first launch, enter:
+   - Server URL: http://127.0.0.1:8000
+   - API Key: your PIPELINE_API_KEY from .env
+4. Tap Connect — the app validates against /stats and saves to Keychain
+```
+
+For a physical device, use your Mac's local IP address instead of `127.0.0.1`:
+```bash
+# Find your Mac's local IP
+ipconfig getifaddr en0
+# Use this as the Server URL in the iOS onboarding screen
 ```
 
 ### Enable Automation
 
 ```bash
-# Start the FastAPI webhook server (stays running via launchd on macOS)
-python api/pipeline_server.py
-
 # Import the n8n workflow
 # Open http://localhost:5678 → Import → n8n/workflows/main_pipeline.json
 # Toggle the workflow to Active
@@ -298,10 +336,10 @@ python api/pipeline_server.py
 
 ```bash
 # ── Database ───────────────────────────────────────────────────────────────
-DATABASE_URL=postgresql://radar:radar_pass@localhost:5432/devsignal
+DATABASE_URL=postgresql://radar:radar_pass@localhost:5433/devsignal
 NEON_DATABASE_URL=postgresql://user:pass@host.neon.tech/neondb?sslmode=require
 
-# ── AI Scoring — free via Groq (console.groq.com) ──────────────────────────
+# ── AI Scoring ─────────────────────────────────────────────────────────────
 GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # ── Telegram Notifications ─────────────────────────────────────────────────
@@ -309,54 +347,32 @@ TELEGRAM_BOT_TOKEN=xxxxxxxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TELEGRAM_CHAT_ID=xxxxxxxxxx
 
 # ── Recruiter Enrichment ───────────────────────────────────────────────────
-HUNTER_API_KEY=xxxxxxxxxxxxxxxx          # hunter.io — 25 domain searches/month free
-SERPER_API_KEY=xxxxxxxxxxxxxxxx          # serper.dev — 2500 searches free on signup
+HUNTER_API_KEY=xxxxxxxxxxxxxxxx
+SERPER_API_KEY=xxxxxxxxxxxxxxxx
 
-# ── Pipeline API ───────────────────────────────────────────────────────────
+# ── Pipeline API (must match iOS app onboarding) ───────────────────────────
 PIPELINE_API_KEY=your-local-api-key
+APP_ENV=development
 ```
-
-The `.env` file is gitignored. A safe `.env.example` with placeholder values is committed in its place. GitHub secret scanning is enabled on this repository.
 
 ---
 
-## Usage
+## API Endpoints
 
-```bash
-# ── Core pipeline ──────────────────────────────────────────────────────────
-python run_scraper.py                  # Tiered multi-source pipeline (15+ sources) → parse → filter → dedup → store → notify
-python run_scorer.py                   # AI score all unscored jobs
-python run_scorer.py --limit 5         # Score only 5 (useful for testing)
-python run_enricher.py                 # Enrich jobs scoring ≥50
-python run_enricher.py --min-score 45  # Lower the enrichment threshold
-python run_enricher.py --limit 10      # Limit for testing
+The FastAPI server (`api/main.py`) exposes 10 REST endpoints, all protected by `X-API-Key` header middleware except `/health`.
 
-# ── Database sync ──────────────────────────────────────────────────────────
-python db_sync.py                      # Push top 50 scored jobs to Neon cloud
-python db_sync.py --limit 100          # Sync more jobs
-
-# ── Watchlist ──────────────────────────────────────────────────────────────
-python run_watchlist.py add "Razorpay" "iOS payment SDK and merchant app"
-python run_watchlist.py list
-python run_watchlist.py check          # Check if any watched companies posted jobs
-
-# ── Dashboard ──────────────────────────────────────────────────────────────
-streamlit run streamlit_app.py         # Local dashboard → http://localhost:8501
-
-# ── API server ─────────────────────────────────────────────────────────────
-python api/pipeline_server.py          # FastAPI → http://localhost:8000
-                                       # Interactive docs → http://localhost:8000/docs
-
-# ── Tests ──────────────────────────────────────────────────────────────────
-python -m pytest tests/ -v             # Run all 65 tests
-python -m pytest tests/test_scorer.py  # Run a specific module
-
-# ── Infrastructure ─────────────────────────────────────────────────────────
-docker compose up -d                   # Start Postgres + n8n
-docker compose ps                      # Check container health
-docker compose down                    # Stop (data preserved)
-docker compose down -v                 # Stop + delete all volumes
-```
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/health` | Server liveness check (public) |
+| `GET` | `/jobs` | Paginated job list with filters |
+| `GET` | `/jobs/{id}` | Single job detail + score breakdown |
+| `GET` | `/jobs/{id}/outreach` | Recruiter message + contact info |
+| `POST` | `/jobs/{id}/apply` | Record an application |
+| `GET` | `/applications` | All tracked applications |
+| `PATCH` | `/applications/{id}` | Update stage or notes |
+| `GET` | `/stats` | Aggregated pipeline analytics |
+| `POST` | `/devices` | Register iOS push notification token |
+| `POST` | `/run-pipeline` | Trigger full scrape pipeline |
 
 ---
 
@@ -365,86 +381,92 @@ docker compose down -v                 # Stop + delete all volumes
 ```
 devsignal/
 │
+├── ios/DevSignal/               # Native iOS app (SwiftUI)
+│   ├── DevSignalApp.swift       # Entry point + AppRouter (onboarding vs main)
+│   ├── MainTabView.swift        # 5-tab root view
+│   ├── Core/
+│   │   ├── AppEnvironment.swift # Keychain-backed config singleton
+│   │   ├── KeychainManager.swift
+│   │   └── Networking/
+│   │       ├── APIClient.swift
+│   │       └── APIError.swift
+│   ├── Models/
+│   │   ├── Job.swift
+│   │   ├── JobsPage.swift
+│   │   ├── OutreachMessage.swift
+│   │   ├── Application.swift
+│   │   └── DashboardStats.swift
+│   ├── Features/
+│   │   ├── Home/
+│   │   ├── Discover/
+│   │   ├── Outreach/
+│   │   ├── Tracker/
+│   │   └── Analytics/
+│   ├── Onboarding/
+│   ├── Settings/
+│   └── Shared/Components/
+│
 ├── scrapers/                    # One file per data source
 │   ├── base_scraper.py
 │   ├── remoteok_scraper.py
 │   ├── hackernews_scraper.py
-│   ├── yc_scraper.py
-│   ├── remotive_scraper.py
-│   ├── arbeitnow_scraper.py
-│   ├── himalayas_scraper.py
-│   ├── weworkremotely_scraper.py
-│   ├── startupjobs_scraper.py
-│   ├── wellfound_scraper.py
-│   ├── cutshort_scraper.py
-│   ├── naukri_scraper.py
-│   ├── indiehackers_scraper.py
-│   └── arc_scraper.py
+│   └── ... (13 total)
 │
 ├── processors/                  # Data cleaning and enrichment
-│   ├── job_parser.py            # Regex extraction: exp, salary, remote, visa
-│   ├── filter_engine.py         # Drops senior/non-iOS/over-experience roles
-│   ├── deduplicator.py          # MD5 hash dedup vs. full database
-│   ├── enricher.py              # Orchestrates 3-layer enrichment pipeline
-│   ├── domain_finder.py         # Extracts company domain from URL or name
-│   ├── hunter_client.py         # Hunter.io API with local JSON cache
-│   └── linkedin_finder.py       # Google/Serper search for LinkedIn profiles
+│   ├── job_parser.py
+│   ├── filter_engine.py
+│   ├── deduplicator.py
+│   ├── enricher.py
+│   ├── domain_finder.py
+│   ├── hunter_client.py
+│   └── linkedin_finder.py
 │
-├── ai/                          # LLM-powered modules (Groq free API)
-│   ├── ios_classifier.py        # Heuristic + AI: confirms iOS product
-│   ├── scorer.py                # 8-factor opportunity scoring (0–100)
-│   └── outreach_generator.py    # Personalized recruiter message generation
+├── ai/                          # LLM-powered modules
+│   ├── ios_classifier.py
+│   ├── scorer.py
+│   └── outreach_generator.py
 │
-├── storage/                     # Database interface
-│   ├── schema.sql               # DDL: 3 tables, 6 indexes, updated_at trigger
-│   ├── db_client.py             # Connection pool + full CRUD, singleton instance
-│   └── migrations.py            # Applies schema idempotently
-│
-├── notifications/
-│   └── telegram_bot.py          # Digest, high-score alerts, error notifications
+├── storage/
+│   ├── schema.sql
+│   ├── db_client.py             # Connection pool + full CRUD, singleton
+│   ├── migrations.py            # Original schema
+│   └── migrate_v2.py            # Adds device_tokens + applications tables
 │
 ├── api/
-│   └── pipeline_server.py       # FastAPI webhook: /run-pipeline, /health, /status
+│   ├── main.py                  # Full REST API — 10 endpoints
+│   ├── middleware.py            # API key authentication middleware
+│   ├── pipeline_server.py       # Legacy webhook (superseded by main.py)
+│   └── start.sh                 # Convenience startup script
 │
-├── dashboard/
-│   ├── app.py                   # Entry point + shared CSS config
-│   ├── db.py                    # Cached SQLAlchemy queries (5-min TTL)
+├── notifications/
+│   └── telegram_bot.py
+│
+├── dashboard/                   # Streamlit web dashboard
+│   ├── app.py
+│   ├── db.py
 │   └── pages/
-│       ├── overview.py          # KPIs, charts, funnel, recent feed
-│       ├── opportunities.py     # Filterable table + inline app tracking
-│       ├── outreach.py          # Generated messages + recruiter contacts
-│       └── system.py            # Pipeline health + run history
 │
-├── pages/                       # Streamlit Cloud native multipage routing
-│   ├── 1_Overview.py
-│   ├── 2_Opportunities.py
-│   ├── 3_Outreach.py
-│   └── 4_System.py
-│
-├── n8n/workflows/
-│   └── main_pipeline.json       # Importable workflow: 12h cron → HTTP → error branch
-│
-├── tests/                       # 65 unit tests — zero real API calls
-│   ├── test_scrapers.py         # Hash consistency, normalize schema, keyword detection
-│   ├── test_processors.py       # Parser regex, filter rules, visa/remote detection
-│   ├── test_scorer.py           # JSON parsing, code block stripping, score clamping
-│   ├── test_notifications.py    # HTML escaping, message splitting, digest formatting
-│   └── test_enricher.py         # Domain extraction, LinkedIn name parsing
+├── tests/                       # 65 unit tests
+│   ├── test_scrapers.py
+│   ├── test_processors.py
+│   ├── test_scorer.py
+│   ├── test_notifications.py
+│   └── test_enricher.py
 │
 ├── config/
-│   ├── settings.py              # Centralised env var loading via python-dotenv
-│   └── keywords.py              # iOS keywords, tech terms, seniority exclusions
+│   ├── settings.py
+│   └── keywords.py
 │
-├── run_scraper.py               # Main pipeline: scrape → parse → filter → store → notify
-├── run_scorer.py                # Batch AI scorer with --limit flag
-├── run_enricher.py              # Enrichment runner with --min-score, --limit flags
-├── run_pipeline.sh              # Shell wrapper called by n8n and launchd
-├── run_watchlist.py             # Company watchlist: add / list / check
-├── db_sync.py                   # Sync local Postgres → Neon cloud (--limit flag)
-├── streamlit_app.py             # Streamlit Cloud entry point
-├── docker-compose.yml           # PostgreSQL 16-alpine + n8n containers
+├── run_scraper.py
+├── run_scorer.py
+├── run_enricher.py
+├── run_pipeline.sh
+├── run_watchlist.py
+├── db_sync.py
+├── streamlit_app.py
+├── docker-compose.yml
 ├── requirements.txt
-├── requirements_dashboard.txt   # Minimal deps for Streamlit Cloud
+├── requirements_dashboard.txt
 ├── .env.example
 └── README.md
 ```
@@ -453,44 +475,58 @@ devsignal/
 
 ## Engineering Highlights
 
-This project was built to demonstrate production-level thinking, not just working code.
+This project was built to demonstrate production-level thinking across two distinct stacks.
 
-**System Design and Separation of Concerns**
-The pipeline is structured in strict layers: tiered scraping, processing, AI, storage, and notification. Any layer can fail, be replaced, or be extended without touching the others. The `BaseScraper` abstract class enforces a contract — every new source automatically gets normalization, hash generation, error handling, and the `run()` entrypoint for free.
+**Full-Stack System Design**
+The backend and iOS app are genuinely independent layers. The iOS app knows nothing about Groq, scrapers, or Postgres — it only speaks HTTP to the FastAPI layer. The FastAPI layer knows nothing about SwiftUI. This means the pipeline, web dashboard, and iOS app can all evolve independently without touching each other.
 
 **ETL Pipeline Design**
 Raw data flows through a typed transformation chain with clear stage boundaries. The deduplicator fetches all existing hashes in a single query, builds a Python `set`, and checks the entire batch in O(1) per job. The filter engine distinguishes between "confidently exclude" (senior title, proven 4+ year requirement) and "benefit of the doubt" (unknown experience) — false negatives are cheaper than missed opportunities.
 
 **LLM Prompt Engineering**
-The scoring prompt specifies exact point values, possible states per factor, a required JSON schema, and an explicit instruction not to infer information not present in the text. The classifier uses a heuristic pre-pass (string matching against known iOS/non-iOS signals) before making an API call — reducing Groq usage by ~60% on obvious cases. Every LLM call has fallback logic so Groq downtime never stops the pipeline.
+The scoring prompt specifies exact point values, possible states per factor, a required JSON schema, and an explicit instruction not to infer information not present in the text. The classifier uses a heuristic pre-pass before making an API call — reducing Groq usage by ~60% on obvious cases. Every LLM call has fallback logic so Groq downtime never stops the pipeline.
+
+**iOS Concurrency**
+The `OutreachViewModel` uses `withThrowingTaskGroup` to fetch outreach messages for all jobs concurrently — equivalent to `asyncio.gather()` in Python. The `TrackerViewModel` uses optimistic updates: stage changes are reflected in the UI immediately while the PATCH request runs in the background, with automatic rollback on failure.
 
 **Database Design**
-The PostgreSQL schema uses proper column types throughout: `SMALLINT` for scores (0–100, wastes no storage), `JSONB` for score breakdowns (queryable, not just a dumped string), `TIMESTAMPTZ` for all timestamps (timezone-aware), and `TEXT` instead of `VARCHAR(N)` for variable-length fields after learning the hard way that HackerNews job titles have no length limit. Six named indexes cover the query patterns the dashboard and pipeline actually run. A `BEFORE UPDATE` trigger maintains `updated_at` automatically.
+The PostgreSQL schema uses `SMALLINT` for scores, `JSONB` for score breakdowns (queryable), `TIMESTAMPTZ` for all timestamps, and `TEXT` instead of `VARCHAR(N)`. Six named indexes cover all query patterns. A `BEFORE UPDATE` trigger maintains `updated_at` automatically on all tables.
 
 **Quota-Aware Resource Management**
-Hunter.io's 25 monthly searches are spent only on jobs scoring ≥50. Hunter results are cached to disk so the same domain is never queried twice across runs. Serper searches follow the same threshold. The classifier heuristic reduces Groq calls. Every free-tier constraint is treated as a design constraint, not an afterthought.
+Hunter.io's 25 monthly searches are spent only on jobs scoring ≥50. Results are cached to disk so the same domain is never queried twice. Serper searches follow the same threshold. The classifier heuristic reduces Groq calls. Every free-tier constraint is treated as a design constraint.
+
+**Cross-Platform Data Compatibility**
+The database stores booleans as `"Yes"/"No"` strings (legacy column type) and IDs as integers. The iOS `Codable` decoders handle both transparently using custom `init(from:)` implementations — Swift always sees proper `Bool` and `String` types without any backend changes required.
 
 **Resilient Automation**
-When n8n's newer versions removed the `Execute Command` node, the system was redesigned around a FastAPI webhook — a cleaner architecture than running shell commands from a workflow engine. The pipeline is now triggerable by any HTTP client. `run_pipeline.sh` detects whether it's running inside Docker (`/app`) or on the host Mac and adjusts paths accordingly. The launchd plist ensures the FastAPI server restarts automatically after reboots.
+When n8n's newer versions removed the `Execute Command` node, the system was redesigned around a FastAPI webhook. The pipeline is now triggerable by any HTTP client. `run_pipeline.sh` detects whether it's running inside Docker or on the host Mac and adjusts paths accordingly. The launchd plist ensures the FastAPI server restarts automatically after reboots.
 
 **Testing Without Real Dependencies**
-65 unit tests, zero real API calls. The Groq client, psycopg2, and requests are all mocked with `unittest.mock`. Tests cover LLM response edge cases (malformed JSON, markdown-fenced JSON, score values outside valid range), filter decision logic, HTML escaping correctness for the Telegram formatter, and message splitting at the exact 4096-character boundary.
+65 unit tests, zero real API calls. The Groq client, psycopg2, and requests are all mocked with `unittest.mock`. Tests cover LLM response edge cases (malformed JSON, markdown-fenced JSON, score values outside valid range), filter decision logic, and HTML escaping correctness.
 
 ---
 
 ## Roadmap
 
-- [x] **Public cloud dashboard** — Live at [devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)
-- [x] **AI outreach generation** — Personalized recruiter messages for all jobs scoring ≥45
-- [x] **Neon production database sync** — Dashboard reads directly from Neon PostgreSQL
-- [ ] **Resume tailoring** — Given a job description, rewrite specific resume bullets to match using the same Groq pipeline
-- [ ] **LinkedIn outreach automation** — Browser automation layer to send generated messages directly from the dashboard
-- [ ] **Ranking model v2** — Train a lightweight classifier on personal application outcome data collected over time
-- [ ] **Additional sources** — Glassdoor, LinkedIn, Indeed, Otta (Playwright-based with proxy rotation)
-- [ ] **Email digest** — Weekly HTML report via SendGrid as an alternative to Telegram
-- [ ] **Interview prep assistant** — For each accepted application, auto-generate company-specific Swift/iOS questions
-- [ ] **Gmail integration** — Parse recruiter replies and auto-update response status in the database
-- [ ] **Salary benchmarking** — Aggregate and surface salary data from collected job descriptions
+- [x] **Multi-source job discovery** — 13 platforms scraped simultaneously
+- [x] **AI scoring** — 8-factor Groq/Llama 3.1 scoring with JSON breakdown
+- [x] **Recruiter enrichment** — Hunter.io + Serper + 4-layer fallback
+- [x] **Outreach generation** — Personalized LinkedIn messages for jobs scoring ≥45
+- [x] **Public web dashboard** — Live at [devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)
+- [x] **Neon production database** — Dashboard reads directly from cloud Postgres
+- [x] **FastAPI REST layer** — 10 endpoints, API key middleware, pagination
+- [x] **Native iOS app** — SwiftUI, 5 tabs, Keychain auth, offline cache
+- [x] **iOS Kanban tracker** — Optimistic updates, 6 stages, notes editor
+- [x] **iOS Analytics** — Swift Charts: score distribution, funnel, sources
+- [x] **iOS Onboarding** — Secure credential setup, Keychain storage
+- [ ] **APNs push notifications** — Live job alerts direct to iPhone
+- [ ] **Resume tailoring** — Rewrite resume bullets to match a job description using Groq
+- [ ] **LinkedIn outreach automation** — Send generated messages directly from the app
+- [ ] **Ranking model v2** — Train on personal application outcome data over time
+- [ ] **Additional sources** — Glassdoor, LinkedIn, Indeed (Playwright-based)
+- [ ] **Email digest** — Weekly HTML report via SendGrid
+- [ ] **Gmail integration** — Parse recruiter replies, auto-update Kanban stage
+- [ ] **Salary benchmarking** — Aggregate and surface salary data from job descriptions
 
 ---
 
@@ -500,7 +536,9 @@ Most portfolio projects demonstrate that you can follow a tutorial. DevSignal de
 
 It required designing a multi-stage data pipeline under real constraints — limited API quota, changing platform structures, unreliable data quality. Making genuine product decisions: which API to call when, how to spend 25 free Hunter.io searches a month, how to handle failures at every stage without crashing the system. Writing LLM prompts that produce consistent structured output reliably, not just in demos. Responding to a live GitHub secret scanning alert and purging credentials from git history correctly.
 
-These are engineering problems that appear in production. The result is a running, autonomous system that solves a genuine personal problem, costs nothing to operate, and now monitors a significantly broader global market of iOS internship opportunities that would not have been found manually.
+Then building a native iOS app on top of it — as someone who had never written Swift before — learning the language by building a real product, debugging real concurrency issues, shipping real fixes for real SwiftUI edge cases (nested ScrollView gesture conflicts, Keychain threading, GeometryReader layout passes).
+
+These are engineering problems that appear in production. The result is a running, autonomous system that solves a genuine personal problem, costs nothing to operate, has a native mobile interface, and monitors a global market of iOS internship opportunities that would not have been found manually.
 
 ---
 
