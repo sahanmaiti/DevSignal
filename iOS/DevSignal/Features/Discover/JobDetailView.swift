@@ -51,7 +51,7 @@ struct JobDetailView: View {
             }
             .padding(20)
         }
-        .navigationTitle(job.company)
+        .navigationTitle(job.company ?? "Unknown Company")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await loadDetail()
@@ -67,16 +67,16 @@ struct JobDetailView: View {
 
     private var headerSection: some View {
         HStack(spacing: 16) {
-            CompanyAvatar(company: job.company)
+            CompanyAvatar(company: job.company ?? "Unknown Company")
                 .scaleEffect(1.4)
                 .frame(width: 64, height: 64)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(job.title)
+                Text(job.displayTitle)
                     .font(.title3)
                     .fontWeight(.bold)
                     .lineLimit(2)
-                Text(job.company)
+                Text(job.company ?? "Unknown Company")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
@@ -371,12 +371,12 @@ struct OutreachDetailSheet: View {
 
                     // ── Job header ────────────────────────────────────────
                     HStack(spacing: 12) {
-                        CompanyAvatar(company: job.company)
+                        CompanyAvatar(company: job.company ?? "Unknown Company")
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(job.title)
+                            Text(job.displayTitle)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                            Text(job.company)
+                            Text(job.company ?? "Unknown Company")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -500,4 +500,3 @@ struct OutreachDetailSheet: View {
             .navigationTitle("Preview")
     }
 }
-

@@ -160,16 +160,16 @@ struct OutreachCard: View {
             }
         } label: {
             HStack(spacing: 12) {
-                CompanyAvatar(company: item.job.company)
+                CompanyAvatar(company: item.job.company ?? "Unknown Company")
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(item.job.title)
+                    Text(item.job.displayTitle)
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
-                    Text(item.job.company)
+                    Text(item.job.company ?? "Unknown Company")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

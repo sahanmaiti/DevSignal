@@ -184,16 +184,16 @@ struct JobRow: View {
         HStack(spacing: 12) {
             
             // ── Company initial avatar ────────────────────────────────────
-            CompanyAvatar(company: job.company)
+            CompanyAvatar(company: job.company ?? "Unknown Company")
             
             // ── Job info ──────────────────────────────────────────────────
             VStack(alignment: .leading, spacing: 4) {
-                Text(job.title)
+                Text(job.displayTitle)
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .lineLimit(1)
                 
-                Text(job.company)
+                Text(job.company ?? "Unknown Company")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 

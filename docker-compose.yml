@@ -90,28 +90,22 @@ services:
       - "5678:5678"       # n8n web UI → open http://localhost:5678
 
     environment:
-      # Tell n8n to store its own data (workflows, credentials) in our Postgres.
-      # Note: hostname is "postgres" — the service name above, not "localhost".
-      # Inside Docker's network, containers find each other by service name.
-      DB_TYPE:                    postgresdb
-      DB_POSTGRESDB_HOST:         postgres
-      DB_POSTGRESDB_PORT:         5432
-      DB_POSTGRESDB_DATABASE:     devsignal
-      DB_POSTGRESDB_USER:         radar
-      DB_POSTGRESDB_PASSWORD:     radar_pass
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
 
-      # Basic auth to protect the n8n UI
-      N8N_BASIC_AUTH_ACTIVE:      "true"
-      N8N_BASIC_AUTH_USER:        admin
-      N8N_BASIC_AUTH_PASSWORD:    devsignal2024
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: devsignal
+      DB_POSTGRESDB_USER: radar
+      DB_POSTGRESDB_PASSWORD: radar_pass
 
-      # Required for webhooks to work correctly
-      WEBHOOK_URL:                "http://localhost:5678"
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: admin
+      N8N_BASIC_AUTH_PASSWORD: devsignal2024
 
-      # Timezone for cron triggers
-      GENERIC_TIMEZONE:           "Asia/Kolkata"
+      WEBHOOK_URL: "http://localhost:5678"
+      GENERIC_TIMEZONE: "Asia/Kolkata"
 
-      # These make your secrets available inside n8n workflows as $env.KEY
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
 

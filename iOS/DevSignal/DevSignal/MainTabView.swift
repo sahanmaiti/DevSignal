@@ -28,42 +28,36 @@ struct MainTabView: View {
             // The $ prefix creates a binding from a @State variable.
             
             HomeView()
-                .tabItem {
-                    Label("Home", systemImage: "house.fill")
-                }
-                .tag(0)   // tag connects this tab to selectedTab value 0
-            
-            // ── Tab 2: Discover ──────────────────────────────────────────
-            DiscoverView()
-                .tabItem {
-                    Label("Discover", systemImage: "magnifyingglass")
-                }
-                .tag(1)
-            
-            // ── Tab 3: Outreach ──────────────────────────────────────────
-            OutreachView()
-                .tabItem {
-                    Label("Outreach", systemImage: "envelope.fill")
-                }
-                .tag(2)
-            
-            // ── Tab 4: Tracker ───────────────────────────────────────────
-            TrackerView()
-                .tabItem {
-                    Label("Tracker", systemImage: "checklist")
-                }
-                .tag(3)
-            
-            // ── Tab 5: Analytics ─────────────────────────────────────────
-            AnalyticsView()
-                .tabItem {
-                    Label("Analytics", systemImage: "chart.bar.fill")
-                }
-                .tag(4)
-        }
-        // Accent color: the color of the selected tab icon.
-        // Color(hex:) won't work yet — we'll use a system color for now.
-        .tint(.indigo)
+                    .tabItem {
+                        Label("Home", systemImage: selectedTab == 0 ? "house.fill" : "house")
+                    }
+                    .tag(0)
+
+                DiscoverView()
+                    .tabItem {
+                        Label("Discover", systemImage: selectedTab == 1 ? "magnifyingglass.circle.fill" : "magnifyingglass")
+                    }
+                    .tag(1)
+
+                OutreachView()
+                    .tabItem {
+                        Label("Outreach", systemImage: selectedTab == 2 ? "envelope.fill" : "envelope")
+                    }
+                    .tag(2)
+
+                TrackerView()
+                    .tabItem {
+                        Label("Tracker", systemImage: selectedTab == 3 ? "checklist" : "checklist")
+                    }
+                    .tag(3)
+
+                AnalyticsView()
+                    .tabItem {
+                        Label("Analytics", systemImage: selectedTab == 4 ? "chart.bar.fill" : "chart.bar")
+                    }
+                    .tag(4)
+            }
+            .tint(.indigo)
     }
 }
 

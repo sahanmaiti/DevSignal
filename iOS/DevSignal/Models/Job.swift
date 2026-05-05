@@ -31,8 +31,8 @@ struct Job: Codable, Identifiable {
     
     // ── Core fields ───────────────────────────────────────────────────────
     let id: String
-    let title: String
-    let company: String
+    let title: String?
+    let company: String?
     let source: String
     let url: String
     
@@ -164,10 +164,65 @@ struct Job: Codable, Identifiable {
         default: return "\(days)d ago"
         }
     }
+
+    // Normalized title for UI. Falls back to parsing the URL when APIs send placeholders.
+    var displayTitle: String {
+        if let title {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalized = trimmed.lowercased()
+            if !trimmed.isEmpty && normalized != "untitled job" && normalized != "untitled" {
+                return trimmed
+            }
+        }
+
+        if let derived = deriveTitleFromURL() {
+            return derived
+        }
+
+        return "Role"
+    }
     
     // Whether this job has been applied to
     var isApplied: Bool {
         applicationStatus != nil && applicationStatus != ""
+    }
+
+    private func deriveTitleFromURL() -> String? {
+        guard let parsedURL = URL(string: url) else { return nil }
+        let rawSlug = parsedURL.lastPathComponent
+        guard !rawSlug.isEmpty else { return nil }
+
+        var pieces = rawSlug.split(separator: "-").map(String.init)
+        guard !pieces.isEmpty else { return nil }
+
+        // Remove likely opaque trailing token.
+        if let last = pieces.last,
+           last.count >= 7,
+           last.range(of: "^[A-Za-z0-9]+$", options: .regularExpression) != nil {
+            pieces.removeLast()
+        }
+
+        // Remove company prefix if the slug starts with company words.
+        if let company {
+            let companyTokens = company
+                .lowercased()
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+
+            var matchCount = 0
+            while matchCount < companyTokens.count &&
+                    matchCount < pieces.count &&
+                    pieces[matchCount].lowercased() == companyTokens[matchCount] {
+                matchCount += 1
+            }
+            if matchCount > 0 && matchCount < pieces.count {
+                pieces.removeFirst(matchCount)
+            }
+        }
+
+        let candidate = pieces.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty else { return nil }
+        return candidate.capitalized
     }
 }
 
