@@ -4,6 +4,7 @@ import Combine
 
 struct AnalyticsView: View {
     @StateObject private var viewModel = AnalyticsViewModel()
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         NavigationStack {
@@ -24,7 +25,12 @@ struct AnalyticsView: View {
             .task {
                 if viewModel.stats == nil { await viewModel.load() }
             }
-            .refreshable { await viewModel.refresh() }
+            .refreshable {
+                await viewModel.refresh()
+                if viewModel.errorMessage == nil {
+                    env.markDataUpdated()
+                }
+            }
         }
     }
 

@@ -22,6 +22,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
+    @Environment(AppEnvironment.self) private var env
     @State private var showSettings = false
 
     var body: some View {

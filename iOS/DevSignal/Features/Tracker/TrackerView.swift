@@ -9,6 +9,7 @@ import Combine
 
 struct TrackerView: View {
     @StateObject private var viewModel = TrackerViewModel()
+    @Environment(AppEnvironment.self) private var env
     @State private var selectedApplication: Application? = nil
 
     var body: some View {
@@ -64,8 +65,8 @@ struct TrackerView: View {
                     }
                 }
             }
-            .task {
-                if viewModel.applications.isEmpty { await viewModel.load() }
+            .task(id: env.dataVersion) {
+                await viewModel.refresh()
             }
             .sheet(item: $selectedApplication) { app in
                 ApplicationDetailSheet(application: app, viewModel: viewModel)

@@ -10,6 +10,7 @@ import Combine
 
 struct OutreachView: View {
     @StateObject private var viewModel = OutreachViewModel()
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         NavigationStack {
@@ -26,8 +27,8 @@ struct OutreachView: View {
             }
             .navigationTitle("Outreach")
             .navigationBarTitleDisplayMode(.large)
-            .task {
-                await viewModel.loadIfNeeded()
+            .task(id: env.dataVersion) {
+                await viewModel.refresh()
             }
         }
     }

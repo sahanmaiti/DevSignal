@@ -11,7 +11,8 @@
 import SwiftUI
 
 struct DiscoverView: View {
-    
+    @Environment(AppEnvironment.self) private var env
+
     // @StateObject: creates the ViewModel when this view is first created,
     // and keeps it alive as long as this view is alive.
     // Use @StateObject when THIS view owns the ViewModel.
@@ -46,10 +47,8 @@ struct DiscoverView: View {
             // .task runs when the view appears AND is async-aware.
             // It automatically cancels if the view disappears.
             // This is the correct way to trigger async work in SwiftUI.
-            .task {
-                if viewModel.jobs.isEmpty {
-                    await viewModel.loadJobs()
-                }
+            .task(id: env.dataVersion) {
+                await viewModel.loadJobs()
             }
             .sheet(isPresented: $showFilters) {
                 FilterSheet(viewModel: viewModel)

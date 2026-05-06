@@ -40,6 +40,7 @@ class AppEnvironment {
     var baseURL: String
     var apiKey: String
     var appearanceModeRaw: String
+    var dataVersion: Int = 0
 
     var appearanceMode: AppearanceMode {
         get { AppearanceMode(rawValue: appearanceModeRaw) ?? .system }
@@ -78,6 +79,10 @@ class AppEnvironment {
     func updateAppearanceMode(_ mode: AppearanceMode) {
         appearanceModeRaw = mode.rawValue
         UserDefaults.standard.set(mode.rawValue, forKey: "appearance_mode")
+    }
+
+    func markDataUpdated() {
+        dataVersion += 1
     }
 }
 
