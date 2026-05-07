@@ -117,7 +117,7 @@ def serialize_job(row: dict) -> dict:
         return None
 
     return {
-        "id":                   str(row.get("id")),
+        "id":                  row.get("id"),
         "title": (
                 row.get("title")
                 or row.get("job_title")
@@ -297,8 +297,8 @@ def get_outreach(job_id: str):
             "job_id":          job_id,
             "message":         job.get("outreach_message"),
             "recruiter_name":  job.get("recruiter_name"),
-            "recruiter_email": job.get("recruiter_email"),
-            "linkedin_url":    job.get("recruiter_linkedin"),
+            "recruiter_email": job.get("email"),
+            "linkedin_url":    job.get("linkedin_profile"),
         }
 
     except HTTPException:
@@ -522,3 +522,10 @@ def run_pipeline():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {str(e)}")
+    
+@app.get("/n8n-ping")
+def n8n_ping():
+    return {
+        "reachable": True,
+        "service": "devsignal-api"
+    }

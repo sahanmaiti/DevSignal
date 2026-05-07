@@ -24,12 +24,24 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Environment(AppEnvironment.self) private var env
     @State private var showSettings = false
+    @State private var showPipelineAlert = false
+    @State private var isUserRefreshing = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     greetingSection
+
+                    if let error = viewModel.errorMessage {
+                        Text("⚠️ \(error)")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
 
                     if viewModel.isLoading {
                         // Show placeholder stats while loading
@@ -50,6 +62,28 @@ struct HomeView: View {
             .navigationTitle("DevSignal")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Task {
+                            await viewModel.runPipelineAndWatch()
+                            showPipelineAlert = (viewModel.pipelineStatusMessage != nil || viewModel.errorMessage != nil)
+                            if viewModel.errorMessage == nil {
+                                env.markDataUpdated()
+                            }
+                        }
+                    } label: {
+                        if viewModel.isRunningPipeline {
+                            ProgressView()
+                                .tint(.secondary)
+                        } else {
+                            Label("Run Pipeline", systemImage: "bolt.fill")
+                                .labelStyle(.iconOnly)
+                                .foregroundStyle(.indigo)
+                        }
+                    }
+                    .disabled(viewModel.isRunningPipeline)
+                    .accessibilityLabel(viewModel.isRunningPipeline ? "Pipeline running" : "Run pipeline")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showSettings = true
@@ -62,13 +96,24 @@ struct HomeView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
-            .task {
-                if viewModel.stats == nil {
-                    await viewModel.load()
-                }
+            .task(id: env.dataVersion) {
+                guard !isUserRefreshing else { return }
+                await viewModel.load()
             }
             .refreshable {
-                await viewModel.load()
+                isUserRefreshing = true
+                defer { isUserRefreshing = false }
+
+                await viewModel.load(force: true)
+            }
+            .alert("Pipeline", isPresented: $showPipelineAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                if let error = viewModel.errorMessage {
+                    Text(error)
+                } else {
+                    Text(viewModel.pipelineStatusMessage ?? "Pipeline started.")
+                }
             }
         }
     }
@@ -83,6 +128,11 @@ struct HomeView: View {
                 Text("Pipeline ran \(stats.lastRunText)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                if viewModel.isRunningPipeline {
+                    Text("Running pipeline…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("Your iOS job radar")
                     .font(.subheadline)

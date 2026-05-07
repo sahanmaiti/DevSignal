@@ -80,6 +80,9 @@ services:
     container_name: devsignal_n8n
     restart: unless-stopped
 
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
+
     # Don't start n8n until Postgres is confirmed healthy.
     # Without this, n8n might try to connect before Postgres is ready.
     depends_on:

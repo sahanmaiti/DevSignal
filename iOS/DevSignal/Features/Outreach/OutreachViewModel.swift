@@ -97,8 +97,9 @@ final class OutreachViewModel: ObservableObject, @unchecked Sendable {
     // ── Refresh ───────────────────────────────────────────────────────────
 
     func refresh() async {
+        // Avoid clearing visible data if another load is already running.
+        guard !isLoading else { return }
         hasLoaded = false
-        items = []
         await load()
     }
 

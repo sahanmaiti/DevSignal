@@ -11,6 +11,7 @@ struct TrackerView: View {
     @StateObject private var viewModel = TrackerViewModel()
     @Environment(AppEnvironment.self) private var env
     @State private var selectedApplication: Application? = nil
+    @State private var isUserRefreshing = false
 
     var body: some View {
         NavigationStack {
@@ -55,8 +56,14 @@ struct TrackerView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task {
+                            isUserRefreshing = true
+                            defer { isUserRefreshing = false }
+
                             viewModel.clearOverrides()
                             await viewModel.refresh()
+                            if viewModel.errorMessage == nil {
+                                env.markDataUpdated()
+                            }
                         }
                     } label: {
                         Image(systemName: "arrow.clockwise")
@@ -66,6 +73,7 @@ struct TrackerView: View {
                 }
             }
             .task(id: env.dataVersion) {
+                guard !isUserRefreshing else { return }
                 await viewModel.refresh()
             }
             .sheet(item: $selectedApplication) { app in

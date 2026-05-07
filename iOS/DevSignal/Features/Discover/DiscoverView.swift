@@ -21,6 +21,7 @@ struct DiscoverView: View {
     
     // Controls whether the filter sheet is showing
     @State private var showFilters = false
+    @State private var isUserRefreshing = false
     
     var body: some View {
         NavigationStack {
@@ -48,6 +49,7 @@ struct DiscoverView: View {
             // It automatically cancels if the view disappears.
             // This is the correct way to trigger async work in SwiftUI.
             .task(id: env.dataVersion) {
+                guard !isUserRefreshing else { return }
                 await viewModel.loadJobs()
             }
             .sheet(isPresented: $showFilters) {
@@ -120,6 +122,9 @@ struct DiscoverView: View {
         .listStyle(.plain)
         // Pull-to-refresh: user pulls down → refresh() is called
         .refreshable {
+            isUserRefreshing = true
+            defer { isUserRefreshing = false }
+
             await viewModel.refresh()
         }
     }

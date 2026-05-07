@@ -55,14 +55,26 @@ final class APIClient {
         let base = AppEnvironment.shared.baseURL
         let key  = AppEnvironment.shared.apiKey
         
-        guard let url = URL(string: base + path) else {
+        guard var urlComponents = URLComponents(string: base + path) else {
             throw APIError.invalidURL
         }
-        
+
+        if method == "GET" {
+            var items = urlComponents.queryItems ?? []
+            items.append(URLQueryItem(name: "_ts", value: "\(Int(Date().timeIntervalSince1970 * 1000))"))
+            urlComponents.queryItems = items
+        }
+
+        guard let url = urlComponents.url else {
+            throw APIError.invalidURL
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue(key, forHTTPHeaderField: "X-API-Key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.timeoutInterval = 15  // fail after 15 seconds (not 60s default)
         
         if let body {
@@ -93,11 +105,16 @@ final class APIClient {
             // await: pause here while the network request is in flight.
             // This does NOT block the main thread — other UI work continues.
             (data, response) = try await URLSession.shared.data(for: request)
+        } catch is CancellationError {
+            throw APIError.cancelled
         } catch let urlError as URLError {
             // URLError means the request never reached the server
             // (no wifi, server unreachable, timeout, etc.)
             if urlError.code == .notConnectedToInternet || urlError.code == .networkConnectionLost {
                 throw APIError.networkUnavailable
+            }
+            if urlError.code == .cancelled {
+                throw APIError.cancelled
             }
             throw APIError.unknown(urlError.localizedDescription)
         }
@@ -145,10 +162,15 @@ final class APIClient {
         let (_, response): (Data, URLResponse)
         do {
             (_, response) = try await URLSession.shared.data(for: request)
+        } catch is CancellationError {
+            throw APIError.cancelled
         } catch let urlError as URLError {
             if urlError.code == .notConnectedToInternet ||
                 urlError.code == .networkConnectionLost {
                 throw APIError.networkUnavailable
+            }
+            if urlError.code == .cancelled {
+                throw APIError.cancelled
             }
             throw APIError.unknown(urlError.localizedDescription)
         }
@@ -298,5 +320,13 @@ final class APIClient {
         } catch {
             return false  // server unreachable
         }
+    }
+
+    // ── POST /run-pipeline ────────────────────────────────────────────────
+    // Triggers the pipeline on the server (async on server side).
+    // The app typically calls this from an explicit "Run pipeline" button,
+    // not from pull-to-refresh.
+    func runPipeline() async throws -> RunPipelineResponse {
+        return try await fetch(path: "/run-pipeline", method: "POST")
     }
 }

@@ -173,6 +173,14 @@ class OpportunityScorer:
             for key in expected_keys:
                 clean_breakdown[key] = int(breakdown.get(key, 0))
 
+            # Validate: if breakdown sum ≠ reported score by more than 2 pts,
+            # use the sum — the model sometimes miscounts the total.
+            breakdown_sum = sum(clean_breakdown.values())
+            if abs(breakdown_sum - score) > 2:
+                print(f"[Scorer] Score mismatch: reported {score}, "
+                      f"breakdown sums to {breakdown_sum}. Using sum.")
+                score = max(0, min(100, breakdown_sum))
+
             return {
                 "score":     score,
                 "breakdown": clean_breakdown,

@@ -19,6 +19,7 @@ enum APIError: Error, LocalizedError {
     case serverError(Int)       // 500+ — server crashed
     case decodingFailed(String) // JSON didn't match our struct
     case networkUnavailable     // no internet connection
+    case cancelled              // request cancelled (e.g. SwiftUI task cancellation)
     case unknown(String)        // catch-all
     
     // errorDescription is shown to the user.
@@ -37,6 +38,8 @@ enum APIError: Error, LocalizedError {
             return "Data parsing error: \(detail)"
         case .networkUnavailable:
             return "No internet connection. Showing cached data."
+        case .cancelled:
+            return nil
         case .unknown(let msg):
             return msg
         }

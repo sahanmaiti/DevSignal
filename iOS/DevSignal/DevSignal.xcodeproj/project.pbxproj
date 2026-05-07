@@ -21,6 +21,7 @@
 		DE7EF81E2FAA3F4D00F20E35 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF81A2FAA350200F20E35 /* SettingsView.swift */; };
 		DE7EF8212FAA40BC00F20E35 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8202FAA40A300F20E35 /* OnboardingView.swift */; };
 		DE7EF8232FAA444B00F20E35 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8222FAA444B00F20E35 /* AppTheme.swift */; };
+		DE7EF8252FACA0F200F20E35 /* RunPipelineResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8242FACA0F200F20E35 /* RunPipelineResponse.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +40,7 @@
 		DE7EF81A2FAA350200F20E35 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		DE7EF8202FAA40A300F20E35 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		DE7EF8222FAA444B00F20E35 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		DE7EF8242FACA0F200F20E35 /* RunPipelineResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPipelineResponse.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -136,6 +138,7 @@
 				DE7EF7F62FA63A4F00F20E35 /* DashboardStats.swift */,
 				DE7EF7F42FA639F300F20E35 /* Job.swift */,
 				DE7EF7F52FA63A2B00F20E35 /* JobPage.swift */,
+				DE7EF8242FACA0F200F20E35 /* RunPipelineResponse.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -253,6 +256,7 @@
 				DE7EF8042FA641B100F20E35 /* DashboardStats.swift in Sources */,
 				DE7EF7F92FA63A8300F20E35 /* APIError.swift in Sources */,
 				DE7EF8062FA641CD00F20E35 /* Job.swift in Sources */,
+				DE7EF8252FACA0F200F20E35 /* RunPipelineResponse.swift in Sources */,
 				DE7EF81E2FAA3F4D00F20E35 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

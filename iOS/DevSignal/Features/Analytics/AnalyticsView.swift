@@ -5,6 +5,7 @@ import Combine
 struct AnalyticsView: View {
     @StateObject private var viewModel = AnalyticsViewModel()
     @Environment(AppEnvironment.self) private var env
+    @State private var isUserRefreshing = false
 
     var body: some View {
         NavigationStack {
@@ -22,14 +23,15 @@ struct AnalyticsView: View {
             }
             .navigationTitle("Analytics")
             .navigationBarTitleDisplayMode(.large)
-            .task {
-                if viewModel.stats == nil { await viewModel.load() }
+            .task(id: env.dataVersion) {
+                guard !isUserRefreshing else { return }
+                await viewModel.load()
             }
             .refreshable {
+                isUserRefreshing = true
+                defer { isUserRefreshing = false }
+
                 await viewModel.refresh()
-                if viewModel.errorMessage == nil {
-                    env.markDataUpdated()
-                }
             }
         }
     }

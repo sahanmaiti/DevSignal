@@ -11,6 +11,7 @@ import Combine
 struct OutreachView: View {
     @StateObject private var viewModel = OutreachViewModel()
     @Environment(AppEnvironment.self) private var env
+    @State private var isUserRefreshing = false
 
     var body: some View {
         NavigationStack {
@@ -28,6 +29,7 @@ struct OutreachView: View {
             .navigationTitle("Outreach")
             .navigationBarTitleDisplayMode(.large)
             .task(id: env.dataVersion) {
+                guard !isUserRefreshing else { return }
                 await viewModel.refresh()
             }
         }
@@ -64,6 +66,9 @@ struct OutreachView: View {
         }
         .listStyle(.plain)
         .refreshable {
+            isUserRefreshing = true
+            defer { isUserRefreshing = false }
+
             await viewModel.refresh()
         }
     }
