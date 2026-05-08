@@ -192,7 +192,7 @@ struct JobDetailView: View {
                                 )
                                 .frame(
                                     width: factor.points > 0
-                                        ? max(4, geo.size.width * CGFloat(factor.points) / 20.0)
+                                        ? max(4, geo.size.width * CGFloat(factor.points) / CGFloat(max(factor.maxPoints, 1)))
                                         : 4
                                 )
                         }

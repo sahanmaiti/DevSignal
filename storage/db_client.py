@@ -513,7 +513,7 @@ class DBClient:
                 SELECT *
                 FROM opportunities
                 WHERE {where_clause}
-                ORDER BY opportunity_score DESC, date_found DESC
+                ORDER BY date_found DESC, opportunity_score DESC
                 LIMIT %s OFFSET %s
             """
 

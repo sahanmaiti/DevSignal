@@ -304,75 +304,38 @@ class OpportunityScorer:
         return results
 
 
+from storage.db_client import DBClient
+
+
+def score_unscored_jobs():
+    """
+    Fetches all unscored jobs from PostgreSQL,
+    scores them with Groq,
+    and updates the DB.
+    """
+    db = DBClient()
+    print("\nFetching unscored jobs...")
+    jobs = db.get_unscored_jobs()
+    if not jobs:
+        print("No unscored jobs found.")
+        return
+    print(f"Found {len(jobs)} unscored jobs.\n")
+    scorer = OpportunityScorer()
+    for i, job in enumerate(jobs):
+        print(f"[{i+1}/{len(jobs)}] Scoring {job.get('company', '?')}...")
+        result = scorer.score(job)
+        db.update_score(
+            job_id=job["id"],
+            score=result["score"],
+            breakdown=result["breakdown"],
+            outreach_message=result.get("summary", "")
+        )
+    print(f"→ {result['score']}/100")
+    time.sleep(3)
+    print("\nScoring complete.")
+
 # ─────────────────────────────────────────────────────────────────────────
 # SELF-TEST
 # ─────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("Testing Opportunity Scorer (new 6-factor model)...")
-    print("=" * 55)
-
-    scorer = OpportunityScorer()
-
-    test_jobs = [
-        {
-            "id": 1,
-            "company": "nooro",
-            "role": "iOS Developer Intern",
-            "location": "Remote",
-            "remote": "Yes",
-            "visa_sponsorship": "Unknown",
-            "experience_req": "0-1 years",
-            "tech_stack": "swift, swiftui, xcode",
-            "description_raw": (
-                "We're building a health and wellness iOS app. "
-                "Looking for a Swift intern to join our remote team. "
-                "Compensation: $2,500/month stipend. "
-                "Entry level, fresh graduates welcome."
-            ),
-        },
-        {
-            "id": 2,
-            "company": "HN Anonymous Startup",
-            "role": "iOS Engineer",
-            "location": "San Francisco, CA",
-            "remote": "No",
-            "visa_sponsorship": "No",
-            "experience_req": "3-5 years",
-            "tech_stack": "swift, objc",
-            "description_raw": (
-                "On-site SF role. Must have 3-5 years iOS experience. "
-                "No visa sponsorship. Series B funded startup."
-            ),
-        },
-        {
-            "id": 3,
-            "company": "YC S24 Mobile Startup",
-            "role": "Junior iOS Developer",
-            "location": "Remote",
-            "remote": "Yes",
-            "visa_sponsorship": "Yes",
-            "experience_req": "1-2 years",
-            "tech_stack": "swift, swiftui, core data",
-            "description_raw": (
-                "YC S24 company building a B2B iOS productivity app. "
-                "Remote first, we sponsor visas. "
-                "Equity + $80,000-$100,000 salary. "
-                "Looking for junior iOS developer with SwiftUI experience."
-            ),
-        },
-    ]
-
-    # Expected approximate scores:
-    # nooro:      ios(30) + remote(20) + exp(20) + salary(10) = 80
-    # HN startup: ios(15) + remote(0)  + exp(0)  + product(8) = 23
-    # YC startup: ios(30) + remote(20) + exp(10) + product(15) + salary(10) + visa(5) = 90
-
-    print()
-    for job in test_jobs:
-        print(f"Scoring: {job['company']} — {job['role']}")
-        result = scorer.score(job, ios_product=True)
-        print(f"  Score:     {result['score']}/100")
-        print(f"  Summary:   {result['summary']}")
-        print(f"  Breakdown: {result['breakdown']}")
-        print()
-        time.sleep(3)
+    score_unscored_jobs()

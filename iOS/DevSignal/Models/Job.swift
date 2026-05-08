@@ -227,41 +227,45 @@ struct Job: Codable, Identifiable {
 }
 
 // ── ScoreBreakdown ────────────────────────────────────────────────────────
-// The score_breakdown JSONB field from Postgres — a dict of factor → points
-// All fields are optional because older jobs may not have all factors
+// Matches the score_breakdown JSON produced by run_scorer.py
 
-    struct ScoreBreakdown: Codable {
-        let remote: Int?
-        let visa: Int?
-        let swift: Int?
-        let iosProduct: Int?
-        let experience: Int?
-        let salary: Int?
-        let funded: Int?
-        let recency: Int?
+// Replace the entire ScoreBreakdown struct at the bottom of Job.swift
 
-        enum CodingKeys: String, CodingKey {
-            // Exact keys from your DB:
-            case remote          = "remote_work"
-            case visa            = "visa_sponsorship"
-            case swift           = "swift_match"
-            case iosProduct      = "ios_product"
-            case experience      = "experience_level"
-            case salary          = "salary_mentioned"
-            case funded          = "startup_potential"
-            case recency         = "recency"
-        }
+struct ScoreBreakdown: Codable {
+    let iosRelevance:    Int?
+    let remote:          Int?
+    let experienceMatch: Int?
+    let productQuality:  Int?
+    let salary:          Int?
+    let visa:            Int?
 
-        var factors: [(name: String, points: Int)] {
-            [
-                ("Remote",      remote ?? 0),
-                ("Visa",        visa ?? 0),
-                ("Swift",       swift ?? 0),
-                ("iOS Product", iosProduct ?? 0),
-                ("Experience",  experience ?? 0),
-                ("Salary",      salary ?? 0),
-                ("Funded",      funded ?? 0),
-                ("Recency",     recency ?? 0),
-            ]
-        }
+    enum CodingKeys: String, CodingKey {
+        case iosRelevance    = "ios_relevance"
+        case remote          = "remote"
+        case experienceMatch = "experience_match"
+        case productQuality  = "product_quality"
+        case salary          = "salary"
+        case visa            = "visa"
     }
+
+    // Max possible points per factor (matches run_scorer.py VALID_VALUES)
+    private static let maxPoints: [String: Int] = [
+        "iOS Relevance": 30,
+        "Remote":        20,
+        "Experience":    20,
+        "Product":       15,
+        "Salary":        10,
+        "Visa":           5,
+    ]
+
+    var factors: [(name: String, points: Int, maxPoints: Int)] {
+        [
+            ("iOS Relevance", iosRelevance    ?? 0, 30),
+            ("Remote",        remote          ?? 0, 20),
+            ("Experience",    experienceMatch ?? 0, 20),
+            ("Product",       productQuality  ?? 0, 15),
+            ("Salary",        salary          ?? 0, 10),
+            ("Visa",          visa            ?? 0,  5),
+        ]
+    }
+}
