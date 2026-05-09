@@ -1,8 +1,4 @@
 // Features/Tracker/TrackerView.swift
-//
-// Premium Kanban board for the DevSignal iOS app.
-// Designed for App Store release — full-height columns, clean cards,
-// smooth stage-move interactions.
 
 import SwiftUI
 import Combine
@@ -16,7 +12,6 @@ struct TrackerView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Subtle gradient background
                 LinearGradient(
                     colors: [Color.dsBackground, Color.dsPlainBackground],
                     startPoint: .top,
@@ -58,7 +53,6 @@ struct TrackerView: View {
                         Task {
                             isUserRefreshing = true
                             defer { isUserRefreshing = false }
-
                             viewModel.clearOverrides()
                             await viewModel.refresh()
                             if viewModel.errorMessage == nil {
@@ -82,13 +76,8 @@ struct TrackerView: View {
         }
     }
 
-    // ── Kanban board ──────────────────────────────────────────────────────
-    // GeometryReader measures the available height so each column can fill
-    // it exactly — this prevents the "floating small box" problem.
-
     private var kanbanBoard: some View {
         GeometryReader { geo in
-            // Guard against NaN, infinity, AND zero/negative during first layout pass.
             let rawHeight = geo.size.height - 24
             let columnHeight: CGFloat = (rawHeight.isFinite && rawHeight > 0) ? rawHeight : 400
 
@@ -109,19 +98,15 @@ struct TrackerView: View {
             }
         }
     }
-    // ── Loading ───────────────────────────────────────────────────────────
 
     private var loadingView: some View {
         VStack(spacing: 16) {
-            ProgressView()
-                .scaleEffect(1.2)
+            ProgressView().scaleEffect(1.2)
             Text("Loading applications…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
     }
-
-    // ── Error ─────────────────────────────────────────────────────────────
 
     private func errorView(message: String) -> some View {
         VStack(spacing: 20) {
@@ -144,9 +129,34 @@ struct TrackerView: View {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STAGE COLUMN
-// Full-height column — background extends from top to bottom of the board.
-// availableHeight is passed in from GeometryReader so every column is
-// exactly the same height regardless of card count.
+//
+// WHY THE PREVIOUS FIX DIDN'T WORK
+// ──────────────────────────────────
+// A ScrollView inside a VStack reports its *ideal height* as the full height
+// of all its content. The parent VStack honours that and expands the scroll
+// view to show everything — so the view is technically a ScrollView but it
+// never needs to scroll because it's already showing all rows.
+//
+// THE FIX
+// ────────
+// Add .frame(maxHeight: .infinity) to the ScrollView.
+// This changes the ScrollView's sizing contract from "I want to be as tall as
+// my content" to "I want to fill whatever space the parent gives me."
+// The parent VStack has a fixed outer frame (availableHeight). After the
+// header and color bar take their natural heights, the remaining space is
+// handed to the ScrollView. If the cards are taller than that space, the
+// ScrollView scrolls. If not, it sits still.
+//
+//   ┌──────────────────────┐  ← .frame(width:200, height:availableHeight)
+//   │ Header   (fixed)     │
+//   │ Color bar (2pt)      │
+//   │ ┌──────────────────┐ │
+//   │ │ ScrollView       │ │  ← .frame(maxHeight: .infinity)  ← THE KEY LINE
+//   │ │   card           │ │    fills remaining height; scrolls when overflow
+//   │ │   card           │ │
+//   │ │   card  ↕ scroll │ │
+//   │ └──────────────────┘ │
+//   └──────────────────────┘
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct StageColumn: View {
@@ -159,9 +169,32 @@ struct StageColumn: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             columnHeader
+
             colorBar
-            cardStack
-            Spacer(minLength: 0)
+
+            // THE FIX: .frame(maxHeight: .infinity) caps the ScrollView to
+            // the remaining height inside the fixed outer frame, forcing it
+            // to scroll when cards overflow rather than growing unbounded.
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 8) {
+                    if cards.isEmpty {
+                        emptyPlaceholder
+                    } else {
+                        ForEach(cards) { card in
+                            ApplicationCard(
+                                application: card,
+                                stage: stage,
+                                isHighlighted: movedCardId == card.applicationId,
+                                onTap: { onCardTap(card) }
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 16)
+            }
+            .frame(maxHeight: .infinity)  // ← fixes the scroll
         }
         .frame(width: 200, height: availableHeight)
         .background(columnBackground)
@@ -169,7 +202,7 @@ struct StageColumn: View {
         .shadow(color: Color.dsMuted.opacity(0.22), radius: 8, x: 0, y: 2)
     }
 
-    // ── Header ────────────────────────────────────────────────────────────
+    // ── Sub-views ─────────────────────────────────────────────────────────
 
     private var columnHeader: some View {
         HStack(spacing: 8) {
@@ -217,27 +250,6 @@ struct StageColumn: View {
             .padding(.horizontal, 14)
     }
 
-    // ── Card stack ────────────────────────────────────────────────────────
-
-    private var cardStack: some View {
-        VStack(spacing: 8) {
-            if cards.isEmpty {
-                emptyPlaceholder
-            } else {
-                ForEach(cards) { card in
-                    ApplicationCard(
-                        application: card,
-                        stage: stage,
-                        isHighlighted: movedCardId == card.applicationId,
-                        onTap: { onCardTap(card) }
-                    )
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, 10)
-    }
-
     private var emptyPlaceholder: some View {
         VStack(spacing: 8) {
             Image(systemName: stage.icon)
@@ -260,9 +272,7 @@ struct StageColumn: View {
 
     private var columnBackground: some View {
         ZStack {
-            // Base fill
             Color.dsGroupedSurface
-            // Subtle top tint from stage colour
             LinearGradient(
                 colors: [stage.color.opacity(0.04), Color.clear],
                 startPoint: .top,
@@ -274,8 +284,6 @@ struct StageColumn: View {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APPLICATION CARD
-// Premium card design with company avatar, score pill, and metadata.
-// Uses .onTapGesture instead of Button to avoid ScrollView gesture conflicts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct ApplicationCard: View {
@@ -288,9 +296,7 @@ struct ApplicationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // ── Top row: avatar + score ───────────────────────────────────
             HStack(alignment: .top, spacing: 0) {
-                // Company initial
                 Text(String(application.company.prefix(1)).uppercased())
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
@@ -312,7 +318,6 @@ struct ApplicationCard: View {
             }
             .padding(.bottom, 8)
 
-            // ── Title ─────────────────────────────────────────────────────
             Text(application.title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)
@@ -320,14 +325,12 @@ struct ApplicationCard: View {
                 .multilineTextAlignment(.leading)
                 .padding(.bottom, 3)
 
-            // ── Company ───────────────────────────────────────────────────
             Text(application.company)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .padding(.bottom, 8)
 
-            // ── Footer ────────────────────────────────────────────────────
             HStack(spacing: 0) {
                 if let source = application.source {
                     Text(source.capitalized)
@@ -353,17 +356,21 @@ struct ApplicationCard: View {
         .animation(.easeInOut(duration: 0.25), value: isHighlighted)
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
-        ._onButtonGesture(pressing: { pressing in
-            withAnimation { pressed = pressing }
-        }, perform: {})
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    withAnimation(.easeInOut(duration: 0.12)) { pressed = true }
+                }
+                .onEnded { _ in
+                    withAnimation(.easeInOut(duration: 0.12)) { pressed = false }
+                }
+        )
     }
 
     private var cardBackground: some View {
         ZStack {
             Color.dsElevatedGroupedSurface
-            if isHighlighted {
-                stage.color.opacity(0.08)
-            }
+            if isHighlighted { stage.color.opacity(0.08) }
         }
     }
 
@@ -377,8 +384,7 @@ struct ApplicationCard: View {
 
     private var avatarColor: Color {
         let colors: [Color] = [.indigo, .blue, .purple, .pink, .orange, .teal, .green]
-        let index = abs(application.company.hashValue) % colors.count
-        return colors[index]
+        return colors[abs(application.company.hashValue) % colors.count]
     }
 
     private func scorePillColor(_ score: Int) -> Color {
@@ -445,11 +451,8 @@ struct ApplicationDetailSheet: View {
         .presentationCornerRadius(28)
     }
 
-    // ── Job header ────────────────────────────────────────────────────────
-
     private var jobHeader: some View {
         HStack(spacing: 14) {
-            // Large company avatar
             Text(String(application.company.prefix(1)).uppercased())
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
@@ -483,8 +486,6 @@ struct ApplicationDetailSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
-    // ── Stage mover ───────────────────────────────────────────────────────
-
     private var stageMover: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Move to Stage")
@@ -509,7 +510,6 @@ struct ApplicationDetailSheet: View {
 
     private func stageButton(_ stage: ApplicationStage) -> some View {
         let isCurrent = currentStage == stage
-
         return Button {
             Task {
                 await viewModel.moveCard(application, to: stage)
@@ -526,7 +526,6 @@ struct ApplicationDetailSheet: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(isCurrent ? .white : stage.color)
                 }
-
                 Text(stage.displayName)
                     .font(.system(size: 10, weight: .semibold))
                     .lineLimit(1)
@@ -546,8 +545,6 @@ struct ApplicationDetailSheet: View {
         }
         .buttonStyle(.plain)
     }
-
-    // ── Notes ─────────────────────────────────────────────────────────────
 
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -583,8 +580,7 @@ struct ApplicationDetailSheet: View {
                     if isSaving {
                         ProgressView().tint(.white).scaleEffect(0.8)
                     } else {
-                        Text("Save Notes")
-                            .fontWeight(.semibold)
+                        Text("Save Notes").fontWeight(.semibold)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -599,8 +595,6 @@ struct ApplicationDetailSheet: View {
         .background(Color.dsGroupedSurface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
-
-    // ── Meta row ──────────────────────────────────────────────────────────
 
     private var metaRow: some View {
         HStack {
@@ -623,8 +617,6 @@ struct ApplicationDetailSheet: View {
         .background(Color.dsGroupedSurface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
-
-    // ── Actions ───────────────────────────────────────────────────────────
 
     private func doSaveNotes() async {
         isSaving = true
