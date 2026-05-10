@@ -6,6 +6,14 @@ env/
 # Secrets — NEVER commit this
 .env
 
+# ─── Sensitive runtime data (BUG-5 fix) ──────────────────────────────────────
+# Hunter.io cache contains real recruiter names, emails, and LinkedIn URLs.
+# Committing this is a GDPR/CCPA violation.
+.hunter_cache.json
+
+# Any other local caches that may contain PII
+*.cache.json
+
 # Python bytecode cache
 __pycache__/
 *.py[cod]
@@ -34,7 +42,8 @@ dist/
 build/
 *.egg-info/
 
-# n8n exports (we'll add these manually when needed)
-# n8n/workflows/*.json.hunter_cache.json
+# Streamlit secrets
 .streamlit/secrets.toml
+
+# Playwright debug output
 wellfound_debug.html
