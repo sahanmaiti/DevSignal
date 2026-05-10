@@ -292,79 +292,68 @@ struct ApplicationCard: View {
     let isHighlighted: Bool
     let onTap: () -> Void
 
-    @State private var pressed = false
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 0) {
-                Text(String(application.company.prefix(1)).uppercased())
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(avatarColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                Spacer()
-
-                if let score = application.score {
-                    Text("\(score)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 0) {
+                    Text(String(application.company.prefix(1)).uppercased())
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(scorePillColor(score))
-                        .clipShape(Capsule())
+                        .frame(width: 32, height: 32)
+                        .background(avatarColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    Spacer()
+
+                    if let score = application.score {
+                        Text("\(score)")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(scorePillColor(score))
+                            .clipShape(Capsule())
+                    }
                 }
-            }
-            .padding(.bottom, 8)
-
-            Text(application.title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .padding(.bottom, 3)
-
-            Text(application.company)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
                 .padding(.bottom, 8)
 
-            HStack(spacing: 0) {
-                if let source = application.source {
-                    Text(source.capitalized)
-                        .font(.system(size: 10, weight: .medium))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.indigo.opacity(0.1))
-                        .foregroundStyle(.indigo)
-                        .clipShape(Capsule())
+                Text(application.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .padding(.bottom, 3)
+
+                Text(application.company)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.bottom, 8)
+
+                HStack(spacing: 0) {
+                    if let source = application.source {
+                        Text(source.capitalized)
+                            .font(.system(size: 10, weight: .medium))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.indigo.opacity(0.1))
+                            .foregroundStyle(.indigo)
+                            .clipShape(Capsule())
+                    }
+                    Spacer()
+                    Text(application.appliedAgoText)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.secondary.opacity(0.7))
                 }
-                Spacer()
-                Text(application.appliedAgoText)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.secondary.opacity(0.7))
             }
+            .padding(12)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(highlightBorder)
+            .contentShape(Rectangle())
         }
-        .padding(12)
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(highlightBorder)
-        .scaleEffect(pressed ? 0.97 : 1.0)
-        .animation(.easeInOut(duration: 0.15), value: pressed)
+        .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.25), value: isHighlighted)
-        .contentShape(Rectangle())
-        .onTapGesture { onTap() }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    withAnimation(.easeInOut(duration: 0.12)) { pressed = true }
-                }
-                .onEnded { _ in
-                    withAnimation(.easeInOut(duration: 0.12)) { pressed = false }
-                }
-        )
     }
 
     private var cardBackground: some View {
