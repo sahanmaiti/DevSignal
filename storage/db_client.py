@@ -243,25 +243,33 @@ class DBClient:
                 ))
 
     def update_application_status(self, job_id: int, status: str) -> None:
-        """
-        Updates the denormalized application_status column on a job row
-        in the `jobs` table.
-
-        Called by POST /jobs/{job_id}/apply in the API layer to keep
-        the Streamlit dashboard in sync when the iOS app marks a job
-        as applied.
-
-        NOTE: This is separate from upsert_application() which writes to
-        the dedicated `applications` table (source of truth for iOS tracker).
-        This method keeps the legacy `jobs.application_status` column current
-        so the existing Streamlit dashboard requires zero changes.
-        """
+    # Map iOS tracker stage → legacy interview_stage column value
+        STAGE_TO_INTERVIEW: dict = {
+            "interview": "Technical",
+            "offer":     "Offer",
+            "rejected":  "Rejected",
+        }
+        interview_stage = STAGE_TO_INTERVIEW.get(status, "")
+    
+        if interview_stage:
+            sql = """
+                UPDATE opportunities
+                SET applied         = TRUE,
+                    interview_stage = %s
+                WHERE id = %s
+            """
+            params = (interview_stage, job_id)
+        else:
+            sql = """
+                UPDATE opportunities
+                SET applied = TRUE
+                WHERE id = %s
+            """
+            params = (job_id,)
+    
         with self.get_conn() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-            "UPDATE opportunities SET response_status = %s WHERE id = %s",
-            (status, job_id)
-        )
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
 
     def update_application_legacy(self, job_id: int, applied: bool,
                                 response_status: str = "",
