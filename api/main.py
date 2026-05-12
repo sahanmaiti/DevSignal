@@ -1,34 +1,70 @@
-# PURPOSE:
-#   The main FastAPI application for the DevSignal iOS backend.
 
+import asyncio
 import sys
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from api.middleware import APIKeyMiddleware
-from storage.async_db import async_db          # ← async wrapper (BUG-4 fix)
-from storage.db_client import db_client        # kept for pipeline trigger only
+from api.auth import (
+    verify_password,
+    create_access_token,
+    create_user,
+    get_user_by_email,
+    create_api_key_for_user,
+    list_api_keys_for_user,
+    revoke_api_key,
+    require_user,
+)
+from api.worker import get_arq_pool
+from storage.async_db import async_db
 from config.settings import PIPELINE_API_KEY
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIFESPAN — ARQ pool created once at startup, shared across requests
+# ─────────────────────────────────────────────────────────────────────────────
+
+_arq_pool = None   # set during lifespan startup
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _arq_pool
+    try:
+        _arq_pool = await get_arq_pool()
+        print("[API] ARQ Redis pool ready")
+    except Exception as exc:
+        # Redis is optional — if it's unavailable, /run-pipeline will
+        # fall back to the legacy Popen behaviour and log a warning.
+        print(f"[API] WARNING: could not connect to Redis: {exc}")
+        print("[API] /run-pipeline will use legacy subprocess fallback.")
+    yield
+    if _arq_pool:
+        await _arq_pool.close()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # APP SETUP
 # ─────────────────────────────────────────────────────────────────────────────
+
 app = FastAPI(
     title="DevSignal API",
     description="iOS backend for DevSignal — AI-powered iOS job radar",
-    version="2.1.0",
+    version="3.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],   # tighten in production (see audit SEC-1)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,14 +77,23 @@ app.add_middleware(APIKeyMiddleware)
 # REQUEST / RESPONSE MODELS
 # ─────────────────────────────────────────────────────────────────────────────
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class CreateAPIKeyRequest(BaseModel):
+    name: str = "default"
+
 class ApplyRequest(BaseModel):
     stage: str  # applied | waiting | replied | interview | offer | rejected
-
 
 class UpdateApplicationRequest(BaseModel):
     stage: Optional[str] = None
     notes: Optional[str] = None
-
 
 class DeviceRegistrationRequest(BaseModel):
     device_token: str
@@ -59,21 +104,21 @@ class DeviceRegistrationRequest(BaseModel):
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
+VALID_STAGES = {"applied", "waiting", "replied", "interview", "offer", "rejected"}
+
+
 def extract_title_from_url(url: str) -> str:
     if not url:
         return "Untitled Job"
     slug = url.split("/")[-1]
-    slug = slug.replace("-", " ")
-    words = slug.split()
-    clean_words = [w for w in words if len(w) > 2]
-    return " ".join(clean_words[:6]).title() or "Untitled Job"
+    words = slug.replace("-", " ").split()
+    clean = [w for w in words if len(w) > 2]
+    return " ".join(clean[:6]).title() or "Untitled Job"
 
 
 def serialize_job(row: dict) -> dict:
     def dt_to_str(val):
-        if isinstance(val, datetime):
-            return val.isoformat()
-        return val
+        return val.isoformat() if isinstance(val, datetime) else val
 
     def to_bool(val):
         if isinstance(val, bool):
@@ -90,40 +135,130 @@ def serialize_job(row: dict) -> dict:
             or row.get("role")
             or extract_title_from_url(row.get("url") or "")
         ),
-        "company":           row.get("company") or "Unknown Company",
-        "source":            row.get("source") or row.get("job_source"),
-        "url":               row.get("url") or row.get("apply_link"),
-        "score":             row.get("score") or row.get("opportunity_score"),
-        "score_breakdown":   row.get("score_breakdown"),
-        "score_explanation": row.get("score_explanation"),
-        "is_remote":         to_bool(row.get("is_remote") or row.get("remote")),
-        "visa_sponsorship":  to_bool(row.get("visa_sponsorship")),
-        "is_ios_product":    row.get("is_ios_product"),
+        "company":            row.get("company") or "Unknown Company",
+        "source":             row.get("source") or row.get("job_source"),
+        "url":                row.get("url") or row.get("apply_link"),
+        "score":              row.get("score") or row.get("opportunity_score"),
+        "score_breakdown":    row.get("score_breakdown"),
+        "score_explanation":  row.get("score_explanation"),
+        "is_remote":          to_bool(row.get("is_remote") or row.get("remote")),
+        "visa_sponsorship":   to_bool(row.get("visa_sponsorship")),
+        "is_ios_product":     row.get("is_ios_product"),
         "experience_required": row.get("experience_required") or row.get("experience_req"),
-        "location":          row.get("location"),
-        "salary":            row.get("salary"),
-        "posted_at":         dt_to_str(row.get("posted_at") or row.get("date_found")),
-        "discovered_at":     dt_to_str(row.get("discovered_at") or row.get("date_found")),
+        "location":           row.get("location"),
+        "salary":             row.get("salary"),
+        "posted_at":          dt_to_str(row.get("posted_at") or row.get("date_found")),
+        "discovered_at":      dt_to_str(row.get("discovered_at") or row.get("date_found")),
         "application_status": row.get("application_status"),
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ENDPOINTS
-# All handlers are async def — BUG-4 fix.
-# All DB calls use await async_db.method() — never blocks the event loop.
+# UTILITY ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/health")
+@app.get("/health", tags=["utility"])
 async def health_check():
     return {
         "status":    "ok",
         "service":   "devsignal-api",
+        "version":   "3.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
-@app.get("/jobs")
+@app.get("/n8n-ping", tags=["utility"])
+async def n8n_ping():
+    return {"reachable": True, "service": "devsignal-api"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ARCH-2  AUTH ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/auth/register", tags=["auth"], status_code=201)
+async def register(body: RegisterRequest):
+    """
+    Creates a new user account.
+    Returns the user record and a JWT access token.
+    """
+    user  = create_user(email=body.email, password=body.password)
+    token = create_access_token(user_id=user["id"], email=user["email"])
+    return {"user": user, "access_token": token, "token_type": "bearer"}
+
+
+@app.post("/auth/login", tags=["auth"])
+async def login(body: LoginRequest):
+    """
+    Authenticates with email + password.
+    Returns a JWT access token valid for JWT_EXPIRE_MINUTES minutes.
+    """
+    user = get_user_by_email(body.email)
+    if user is None or not verify_password(body.password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+    if not user.get("is_active"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive.",
+        )
+    token = create_access_token(user_id=user["id"], email=user["email"])
+    return {
+        "access_token": token,
+        "token_type":   "bearer",
+        "user": {
+            "id":    user["id"],
+            "email": user["email"],
+            "plan":  user["plan"],
+        },
+    }
+
+
+@app.get("/auth/me", tags=["auth"])
+async def me(user: dict = Depends(require_user)):
+    """Returns the currently authenticated user's profile."""
+    return {"id": user["id"], "email": user["email"], "plan": user["plan"]}
+
+
+@app.post("/auth/api-keys", tags=["auth"], status_code=201)
+async def create_api_key(
+    body: CreateAPIKeyRequest,
+    user: dict = Depends(require_user),
+):
+    """
+    Generates a new per-user API key.
+    The raw key is returned ONCE — store it in the iOS Keychain immediately.
+    """
+    raw_key = create_api_key_for_user(user_id=user["id"], name=body.name)
+    return {
+        "api_key": raw_key,   # shown once — never stored in plaintext
+        "name":    body.name,
+        "message": "Store this key securely. It will not be shown again.",
+    }
+
+
+@app.get("/auth/api-keys", tags=["auth"])
+async def get_api_keys(user: dict = Depends(require_user)):
+    """Lists all active API keys for the current user (hashes not included)."""
+    return list_api_keys_for_user(user_id=user["id"])
+
+
+@app.delete("/auth/api-keys/{key_id}", tags=["auth"])
+async def delete_api_key(key_id: str, user: dict = Depends(require_user)):
+    """Revokes an API key. The iOS app will need to generate a new one."""
+    revoked = revoke_api_key(key_id=key_id, user_id=user["id"])
+    if not revoked:
+        raise HTTPException(status_code=404, detail="API key not found.")
+    return {"revoked": True, "key_id": key_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/jobs", tags=["jobs"])
 async def get_jobs(
     min_score:  int            = Query(default=0,  ge=0,  le=100),
     remote:     Optional[bool] = Query(default=None),
@@ -136,15 +271,13 @@ async def get_jobs(
 ):
     try:
         filters: dict = {"min_score": min_score, "days_fresh": days_fresh}
-        if remote  is not None: filters["is_remote"]       = "Yes" if remote else "No"
-        if visa    is not None: filters["visa_sponsorship"] = visa
-        if source  is not None: filters["source"]           = source
-        if applied is not None: filters["exclude_applied"]  = not applied
+        if remote  is not None: filters["is_remote"]        = "Yes" if remote else "No"
+        if visa    is not None: filters["visa_sponsorship"]  = visa
+        if source  is not None: filters["source"]            = source
+        if applied is not None: filters["exclude_applied"]   = not applied
 
         offset = (page - 1) * per_page
 
-        # Both DB calls run concurrently — saves a full round-trip latency
-        import asyncio
         jobs_raw, total = await asyncio.gather(
             async_db.get_jobs_filtered(filters, limit=per_page + 1, offset=offset),
             async_db.count_jobs_filtered(filters),
@@ -160,12 +293,11 @@ async def get_jobs(
             "per_page": per_page,
             "has_more": has_more,
         }
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-@app.get("/jobs/{job_id}")
+@app.get("/jobs/{job_id}", tags=["jobs"])
 async def get_job(job_id: str):
     try:
         job = await async_db.get_job_by_id(job_id)
@@ -175,10 +307,10 @@ async def get_job(job_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-@app.get("/jobs/{job_id}/outreach")
+@app.get("/jobs/{job_id}/outreach", tags=["jobs"])
 async def get_outreach(job_id: str):
     try:
         job = await async_db.get_job_by_id(job_id)
@@ -194,27 +326,32 @@ async def get_outreach(job_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-@app.post("/jobs/{job_id}/apply")
+# ─────────────────────────────────────────────────────────────────────────────
+# APPLICATION ENDPOINTS
+# ARCH-3: update_application_status call removed — DB trigger handles the sync
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/jobs/{job_id}/apply", tags=["applications"])
 async def apply_to_job(job_id: str, body: ApplyRequest):
-    valid_stages = {"applied", "waiting", "replied", "interview", "offer", "rejected"}
-    if body.stage not in valid_stages:
+    if body.stage not in VALID_STAGES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid stage '{body.stage}'. Must be one of: {valid_stages}",
+            detail=f"Invalid stage '{body.stage}'. Must be one of: {VALID_STAGES}",
         )
     try:
         job = await async_db.get_job_by_id(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-        # Both writes in parallel — they touch different tables
-        import asyncio
-        application, _ = await asyncio.gather(
-            async_db.upsert_application(job_id=job_id, stage=body.stage),
-            async_db.update_application_status(job_id, body.stage),
+        # ARCH-3: only one write needed.
+        # The trg_sync_application_to_opportunity trigger will automatically
+        # update opportunities.response_status and interview_stage inside the
+        # same transaction — no dual-write, no possibility of drift.
+        application = await async_db.upsert_application(
+            job_id=int(job_id), stage=body.stage
         )
 
         return {
@@ -226,10 +363,10 @@ async def apply_to_job(job_id: str, body: ApplyRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-@app.get("/applications")
+@app.get("/applications", tags=["applications"])
 async def get_applications():
     try:
         applications = await async_db.get_all_applications()
@@ -242,28 +379,24 @@ async def get_applications():
                 "score":          app.get("opportunity_score"),
                 "source":         app.get("job_source"),
                 "stage":          app.get("stage", "applied"),
-                "applied_at":     app.get("applied_at").isoformat()
-                                if app.get("applied_at") else None,
+                "applied_at":     app["applied_at"].isoformat() if app.get("applied_at") else None,
                 "notes":          app.get("notes"),
-                "updated_at":     app.get("updated_at").isoformat()
-                                if app.get("updated_at") else None,
+                "updated_at":     app["updated_at"].isoformat() if app.get("updated_at") else None,
             }
             for app in applications
         ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-@app.patch("/applications/{application_id}")
+@app.patch("/applications/{application_id}", tags=["applications"])
 async def update_application(application_id: str,
                             body: UpdateApplicationRequest):
-    if body.stage is not None:
-        valid_stages = {"applied", "waiting", "replied",
-                        "interview", "offer", "rejected"}
-        if body.stage not in valid_stages:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stage '{body.stage}'"
-            )
+    if body.stage is not None and body.stage not in VALID_STAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid stage '{body.stage}'"
+        )
     try:
         updated = await async_db.update_application(
             application_id=application_id,
@@ -279,36 +412,44 @@ async def update_application(application_id: str,
             "application_id": application_id,
             "stage":          updated.get("stage"),
             "notes":          updated.get("notes"),
-            "updated_at":     updated.get("updated_at").isoformat()
+            "updated_at":     updated["updated_at"].isoformat()
                             if updated.get("updated_at") else None,
         }
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-@app.get("/stats")
+# ─────────────────────────────────────────────────────────────────────────────
+# STATS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/stats", tags=["analytics"])
 async def get_stats():
     try:
         stats = await async_db.get_dashboard_stats()
         return {
-            "total_jobs":          stats.get("total_jobs", 0),
-            "avg_score":           round(stats.get("avg_score", 0.0), 1),
-            "jobs_above_70":       stats.get("jobs_above_70", 0),
-            "applied_count":       stats.get("applied_count", 0),
-            "reply_rate":          round(stats.get("reply_rate", 0.0), 2),
-            "interview_count":     stats.get("interview_count", 0),
-            "pipeline_last_run":   stats.get("pipeline_last_run").isoformat()
+            "total_jobs":         stats.get("total_jobs", 0),
+            "avg_score":          round(stats.get("avg_score", 0.0), 1),
+            "jobs_above_70":      stats.get("jobs_above_70", 0),
+            "applied_count":      stats.get("applied_count", 0),
+            "reply_rate":         round(stats.get("reply_rate", 0.0), 2),
+            "interview_count":    stats.get("interview_count", 0),
+            "pipeline_last_run":  stats["pipeline_last_run"].isoformat()
                                 if stats.get("pipeline_last_run") else None,
-            "score_distribution":  stats.get("score_distribution", []),
-            "top_sources":         stats.get("top_sources", []),
+            "score_distribution": stats.get("score_distribution", []),
+            "top_sources":        stats.get("top_sources", []),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
-@app.post("/devices")
+# ─────────────────────────────────────────────────────────────────────────────
+# DEVICES
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/devices", tags=["notifications"])
 async def register_device(body: DeviceRegistrationRequest):
     try:
         await async_db.upsert_device_token(
@@ -316,41 +457,113 @@ async def register_device(body: DeviceRegistrationRequest):
         )
         return {"registered": True, "platform": body.platform}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Registration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Registration error: {e}")
 
 
-@app.post("/run-pipeline")
+# ─────────────────────────────────────────────────────────────────────────────
+# ARCH-4  PIPELINE ENDPOINTS
+#
+# POST /run-pipeline  — enqueues the pipeline task in ARQ/Redis.
+#   Returns a job_id immediately (non-blocking).
+#   Falls back to legacy Popen if Redis is unavailable (personal-mode compat).
+#
+# GET  /pipeline/status/{job_id}  — polls ARQ for task result.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/run-pipeline", tags=["pipeline"])
 async def run_pipeline():
     """
-    Triggers the pipeline as a background subprocess.
-    Non-blocking: returns immediately with the PID.
-    """
-    import subprocess
+    Enqueues the full pipeline (scrape → score → enrich → notify) via ARQ.
 
-    script_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "run_pipeline.sh",
-    )
-    if not os.path.exists(script_path):
+    Returns a job_id that can be polled with GET /pipeline/status/{job_id}.
+    If Redis is unavailable, falls back to the legacy Popen approach and
+    returns pid instead of job_id (personal-mode backward compatibility).
+    """
+    global _arq_pool
+
+    # ── ARQ path (preferred) ──────────────────────────────────────────────
+    if _arq_pool is not None:
+        try:
+            job = await _arq_pool.enqueue_job(
+                "run_pipeline",
+                # _job_id makes the queue idempotent: if a pipeline is already
+                # running, ARQ returns the same job_id instead of queuing a second
+                # run — this prevents the double-run race condition from ARCH-4.
+                _job_id="pipeline_singleton",
+            )
+            if job is None:
+                # job is None when _job_id already exists in the queue/running
+                return {
+                    "status":  "already_running",
+                    "job_id":  "pipeline_singleton",
+                    "message": "A pipeline run is already in progress.",
+                }
+            return {
+                "status":  "queued",
+                "job_id":  job.job_id,
+                "message": "Pipeline enqueued. Poll /pipeline/status/pipeline_singleton for updates.",
+            }
+        except Exception as exc:
+            print(f"[API] ARQ enqueue failed: {exc} — falling back to Popen")
+            # Fall through to legacy path
+
+    # ── Legacy Popen fallback (personal mode without Redis) ───────────────
+    import subprocess
+    from pathlib import Path
+
+    script_path = Path(__file__).parent.parent / "run_pipeline.sh"
+    if not script_path.exists():
         raise HTTPException(status_code=404, detail="Pipeline script not found")
 
     try:
-        result = subprocess.Popen(
-            ["bash", script_path],
+        proc = subprocess.Popen(
+            ["bash", str(script_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         return {
             "status":  "started",
-            "pid":     result.pid,
-            "message": "Pipeline triggered successfully",
+            "pid":     proc.pid,
+            "message": "Pipeline started (legacy mode — Redis unavailable). "
+                    "No status tracking available.",
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {e}")
+
+
+@app.get("/pipeline/status/{job_id}", tags=["pipeline"])
+async def pipeline_status(job_id: str):
+    """
+    Returns the current status of an ARQ pipeline job.
+
+    Possible status values:
+    queued     — waiting in the queue, not yet started
+    in_progress — currently running
+    complete   — finished successfully (result contains pipeline output)
+    failed     — failed after max_tries retries
+    not_found  — job_id unknown (expired from Redis or never created)
+    """
+    global _arq_pool
+    if _arq_pool is None:
         raise HTTPException(
-            status_code=500, detail=f"Failed to start pipeline: {str(e)}"
+            status_code=503,
+            detail="Redis is not available. Pipeline status tracking is disabled.",
         )
 
+    try:
+        from arq.jobs import Job, JobStatus
 
-@app.get("/n8n-ping")
-async def n8n_ping():
-    return {"reachable": True, "service": "devsignal-api"}
+        job    = Job(job_id=job_id, redis=_arq_pool)
+        jstatus = await job.status()
+
+        if jstatus == JobStatus.not_found:
+            return {"job_id": job_id, "status": "not_found"}
+
+        result = await job.result(timeout=0)   # timeout=0 → don't wait
+        return {
+            "job_id": job_id,
+            "status": jstatus.value,
+            "result": result,
+        }
+    except Exception as exc:
+        return {"job_id": job_id, "status": "unknown", "error": str(exc)}
