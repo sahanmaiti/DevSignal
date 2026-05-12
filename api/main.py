@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -25,7 +25,6 @@ from api.auth import (
 )
 from api.worker import get_arq_pool
 from storage.async_db import async_db
-from config.settings import PIPELINE_API_KEY
 
 
 # ─────────────────────────────────────────────────────────────────────────────
