@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -289,21 +289,54 @@ async def get_current_user(
 
 
 async def require_user(
-    user: Optional[dict] = Depends(get_current_user),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> dict:
     """
-    Dependency that REQUIRES a valid JWT.  Raises 401 if not authenticated.
-    Use this on any endpoint that must be user-scoped.
+    Dependency that REQUIRES a valid authenticated user.
+    Raises 401 if not authenticated, 403 if account is inactive.
+
+    Authentication is resolved in priority order:
+
+    1. request.state.user — set by APIKeyMiddleware for both X-API-Key modes.
+    Per-user ds_ keys land here with a full user dict.
+    This covers all API-key authenticated requests.
+
+    2. JWT Bearer token — extracted directly from the Authorization header.
+    Fallback for direct JWT use (web dashboard, tests).
+
+    Without checking request.state.user first, requests authenticated via a
+    per-user API key (ds_xxx) would always get 401 on protected endpoints
+    because the Authorization header is absent for API-key requests.
     """
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not user.get("is_active"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is inactive.",
-        )
-    return user
+    # ── Priority 1: middleware already authenticated this request ─────────
+    middleware_user = getattr(request.state, "user", None)
+    if middleware_user is not None:
+        if not middleware_user.get("is_active"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is inactive.",
+            )
+        return middleware_user
+
+    # ── Priority 2: JWT Bearer token ──────────────────────────────────────
+    if credentials is not None:
+        try:
+            payload = decode_access_token(credentials.credentials)
+            user = get_user_by_id(payload["sub"])
+            if user is not None:
+                if not user.get("is_active"):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Account is inactive.",
+                    )
+                return user
+        except HTTPException:
+            pass
+
+    # ── No valid credentials found ────────────────────────────────────────
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
