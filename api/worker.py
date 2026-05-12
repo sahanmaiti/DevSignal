@@ -1,32 +1,3 @@
-# api/worker.py
-#
-# PURPOSE:
-#   ARQ async worker that runs background tasks for DevSignal.
-#   ARQ is Redis-backed and async-native — a natural fit for FastAPI.
-#
-# WHY THIS FIXES ARCH-4
-#   Before: POST /run-pipeline did subprocess.Popen and returned the PID.
-#     • Two simultaneous taps could start two pipeline processes that would
-#       race each other inserting jobs and cause DB constraint violations.
-#     • No status tracking, no retry, no error reporting back to the caller.
-#
-#   After: POST /run-pipeline enqueues a job and returns a job_id.
-#     • ARQ's built-in deduplication (job_id) prevents double-runs.
-#     • Job status is stored in Redis — the client can poll GET /pipeline/status/{job_id}.
-#     • Failures are retried up to MAX_TRIES times with exponential backoff.
-#     • The event loop is never blocked; the Popen call is gone.
-#
-# STARTING THE WORKER:
-#   # Development (single process):
-#   arq api.worker.WorkerSettings
-#
-#   # Production (add to docker-compose.yml as a separate service):
-#   command: arq api.worker.WorkerSettings
-#
-# DEPENDENCIES:
-#   pip install arq redis
-#
-# PLACEMENT: api/worker.py
 
 import asyncio
 import os
