@@ -46,4 +46,4 @@ build/
 .streamlit/secrets.toml
 
 # Playwright debug output
-wellfound_debug.html
+wellfound_debug.htmlbackup_before_arch_fixes.sql
