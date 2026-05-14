@@ -88,38 +88,24 @@ struct SettingsView: View {
     // ── App section ───────────────────────────────────────────────────────
 
     private var appSection: some View {
-        Group {
-            Section("Appearance") {
-                Picker("Theme", selection: Binding(
-                    get: { env.appearanceMode },
-                    set: { env.updateAppearanceMode($0) }
-                )) {
-                    ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
+        Section("About") {
+            HStack {
+                Label("Version", systemImage: "info.circle.fill")
+                Spacer()
+                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
+                    .foregroundStyle(.secondary)
             }
 
-            Section("About") {
-                HStack {
-                    Label("Version", systemImage: "info.circle.fill")
-                    Spacer()
-                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
-                        .foregroundStyle(.secondary)
-                }
+            HStack {
+                Label("Built by", systemImage: "person.fill")
+                Spacer()
+                Text("Sahan Maiti")
+                    .foregroundStyle(.secondary)
+            }
 
-                HStack {
-                    Label("Built by", systemImage: "person.fill")
-                    Spacer()
-                    Text("Sahan Maiti")
-                        .foregroundStyle(.secondary)
-                }
-
-                Link(destination: URL(string: "https://github.com/sahanmaiti/devsignal")!) {
-                    Label("GitHub Repository", systemImage: "chevron.left.forwardslash.chevron.right")
-                        .foregroundStyle(.indigo)
-                }
+            Link(destination: URL(string: "https://github.com/sahanmaiti/devsignal")!) {
+                Label("GitHub Repository", systemImage: "chevron.left.forwardslash.chevron.right")
+                    .foregroundStyle(.indigo)
             }
         }
     }

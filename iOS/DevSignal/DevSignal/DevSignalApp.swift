@@ -34,7 +34,6 @@ struct AppRouter: View {
                     .transition(.opacity)
             }
         }
-        .preferredColorScheme(env.appearanceMode.colorScheme)
+        .preferredColorScheme(.light)
     }
 }
-

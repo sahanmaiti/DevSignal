@@ -9,43 +9,13 @@
 import Foundation
 import SwiftUI
 
-enum AppearanceMode: String, CaseIterable, Identifiable {
-    case system
-    case light
-    case dark
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .system: return "System"
-        case .light: return "Light"
-        case .dark: return "Dark"
-        }
-    }
-
-    var colorScheme: ColorScheme? {
-        switch self {
-        case .system: return nil
-        case .light: return .light
-        case .dark: return .dark
-        }
-    }
-}
-
 @Observable
 class AppEnvironment {
     static let shared = AppEnvironment()
 
     var baseURL: String
     var apiKey: String
-    var appearanceModeRaw: String
     var dataVersion: Int = 0
-
-    var appearanceMode: AppearanceMode {
-        get { AppearanceMode(rawValue: appearanceModeRaw) ?? .system }
-        set { appearanceModeRaw = newValue.rawValue }
-    }
 
     // True when both values are set — drives onboarding vs main app routing
     var isConfigured: Bool {
@@ -56,7 +26,6 @@ class AppEnvironment {
         // Load from Keychain — returns nil if first launch
         self.baseURL = KeychainManager.load(.baseURL) ?? ""
         self.apiKey  = KeychainManager.load(.apiKey)  ?? ""
-        self.appearanceModeRaw = UserDefaults.standard.string(forKey: "appearance_mode") ?? AppearanceMode.system.rawValue
     }
 
     // ── Called after successful onboarding validation ─────────────────────
@@ -76,13 +45,7 @@ class AppEnvironment {
         self.apiKey  = ""
     }
 
-    func updateAppearanceMode(_ mode: AppearanceMode) {
-        appearanceModeRaw = mode.rawValue
-        UserDefaults.standard.set(mode.rawValue, forKey: "appearance_mode")
-    }
-
     func markDataUpdated() {
         dataVersion += 1
     }
 }
-

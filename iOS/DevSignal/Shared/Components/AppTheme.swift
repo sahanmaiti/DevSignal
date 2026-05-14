@@ -11,59 +11,12 @@ extension UIColor {
 }
 
 extension Color {
-    static let dsBackground = Color(uiColor: UIColor { trait in
-        if trait.userInterfaceStyle == .dark {
-            return UIColor(hex: 0x202940)
-        }
-        return .systemGroupedBackground
-    })
-
-    static let dsPlainBackground = Color(uiColor: UIColor { trait in
-        if trait.userInterfaceStyle == .dark {
-            return UIColor(hex: 0x202940)
-        }
-        return .systemBackground
-    })
-
-    static let dsSurface = Color(uiColor: UIColor { trait in
-        if trait.userInterfaceStyle == .dark {
-            return UIColor(hex: 0x4B4038)
-        }
-        return .secondarySystemBackground
-    })
-
-    static let dsGroupedSurface = Color(uiColor: UIColor { trait in
-        if trait.userInterfaceStyle == .dark {
-            return UIColor(hex: 0x4B4038)
-        }
-        return .secondarySystemGroupedBackground
-    })
-
-    static let dsElevatedSurface = Color(uiColor: UIColor { trait in
-        if trait.userInterfaceStyle == .dark {
-            return UIColor(hex: 0x4B4038, alpha: 0.92)
-        }
-        return .tertiarySystemBackground
-    })
-
-    static let dsElevatedGroupedSurface = Color(uiColor: UIColor { trait in
-        if trait.userInterfaceStyle == .dark {
-            return UIColor(hex: 0x4B4038, alpha: 0.92)
-        }
-        return .tertiarySystemGroupedBackground
-    })
-
-    static let dsMuted = Color(uiColor: UIColor { trait in
-        if trait.userInterfaceStyle == .dark {
-            return UIColor(hex: 0x9A8678)
-        }
-        return .secondaryLabel
-    })
-
-    static let dsAccent = Color(uiColor: UIColor { trait in
-        if trait.userInterfaceStyle == .dark {
-            return UIColor(hex: 0xCAAA98)
-        }
-        return .systemIndigo
-    })
+    static let dsBackground = Color(uiColor: .systemGroupedBackground)
+    static let dsPlainBackground = Color(uiColor: .systemBackground)
+    static let dsSurface = Color(uiColor: .secondarySystemBackground)
+    static let dsGroupedSurface = Color(uiColor: .secondarySystemGroupedBackground)
+    static let dsElevatedSurface = Color(uiColor: .tertiarySystemBackground)
+    static let dsElevatedGroupedSurface = Color(uiColor: .tertiarySystemGroupedBackground)
+    static let dsMuted = Color(uiColor: .secondaryLabel)
+    static let dsAccent = Color(uiColor: .systemIndigo)
 }
