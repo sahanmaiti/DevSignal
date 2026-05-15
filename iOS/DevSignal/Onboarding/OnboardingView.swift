@@ -1,30 +1,18 @@
-// PURPOSE:
-//   First-launch setup screen. User enters their server URL and API key.
-//   We validate by calling GET /stats (a protected endpoint).
-//   On success, credentials are saved to Keychain and the main app appears.
-//
-// This screen only shows when AppEnvironment.isConfigured == false.
-// Once credentials are saved, it never shows again unless the user
-// resets from Settings.
-
 import SwiftUI
 
 struct OnboardingView: View {
 
     @Environment(AppEnvironment.self) private var env
 
-    // Form fields
     @State private var serverURL = "http://127.0.0.1:8000"
     @State private var apiKey = ""
 
-    // Validation state
     @State private var isValidating = false
     @State private var errorMessage: String? = nil
-    @State private var currentStep = 0   // 0 = welcome, 1 = setup
+    @State private var currentStep = 0
 
     var body: some View {
         ZStack {
-            // Background gradient
             LinearGradient(
                 colors: [Color.indigo.opacity(0.15), Color.dsPlainBackground],
                 startPoint: .topLeading,
@@ -36,13 +24,13 @@ struct OnboardingView: View {
                 welcomeStep
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
-                        removal: .move(edge: .leading)
+                        removal:   .move(edge: .leading)
                     ))
             } else {
                 setupStep
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
-                        removal: .move(edge: .leading)
+                        removal:   .move(edge: .leading)
                     ))
             }
         }
@@ -55,16 +43,13 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            // App icon placeholder
             ZStack {
                 RoundedRectangle(cornerRadius: 28)
-                    .fill(
-                        LinearGradient(
-                            colors: [.indigo, .purple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(LinearGradient(
+                        colors: [.indigo, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
                     .frame(width: 110, height: 110)
                     .shadow(color: .indigo.opacity(0.4), radius: 20, y: 8)
 
@@ -86,7 +71,6 @@ struct OnboardingView: View {
                 .padding(.horizontal, 40)
                 .padding(.bottom, 48)
 
-            // Feature list
             VStack(alignment: .leading, spacing: 16) {
                 FeatureRow(icon: "magnifyingglass", color: .blue,
                            title: "13+ Job Sources",
@@ -110,19 +94,16 @@ struct OnboardingView: View {
                 withAnimation { currentStep = 1 }
             } label: {
                 HStack {
-                    Text("Get Started")
-                        .fontWeight(.semibold)
+                    Text("Get Started").fontWeight(.semibold)
                     Image(systemName: "arrow.right")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(
-                    LinearGradient(
-                        colors: [.indigo, .purple],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .background(LinearGradient(
+                    colors: [.indigo, .purple],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ))
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .shadow(color: .indigo.opacity(0.3), radius: 8, y: 4)
@@ -138,7 +119,6 @@ struct OnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
 
-                // Back button
                 Button {
                     withAnimation { currentStep = 0 }
                 } label: {
@@ -151,7 +131,6 @@ struct OnboardingView: View {
                 }
                 .padding(.top, 8)
 
-                // Header
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Connect Your Server")
                         .font(.title2)
@@ -161,7 +140,6 @@ struct OnboardingView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                // Server URL field
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Server URL", systemImage: "server.rack")
                         .font(.caption)
@@ -188,7 +166,6 @@ struct OnboardingView: View {
                         .foregroundStyle(.tertiary)
                 }
 
-                // API key field
                 VStack(alignment: .leading, spacing: 8) {
                     Label("API Key", systemImage: "key.fill")
                         .font(.caption)
@@ -196,7 +173,7 @@ struct OnboardingView: View {
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
 
-                    SecureField("devsignal-local-key-2024", text: $apiKey)
+                    SecureField("your-api-key", text: $apiKey)
                         .textFieldStyle(.plain)
                         .font(.subheadline)
                         .autocorrectionDisabled()
@@ -214,7 +191,6 @@ struct OnboardingView: View {
                         .foregroundStyle(.tertiary)
                 }
 
-                // Error message
                 if let error = errorMessage {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.circle.fill")
@@ -228,19 +204,16 @@ struct OnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
-                // Connect button
                 Button {
                     Task { await validateAndConnect() }
                 } label: {
                     HStack {
                         if isValidating {
                             ProgressView().tint(.white).scaleEffect(0.85)
-                            Text("Connecting…")
-                                .fontWeight(.semibold)
+                            Text("Connecting…").fontWeight(.semibold)
                         } else {
                             Image(systemName: "bolt.fill")
-                            Text("Connect")
-                                .fontWeight(.semibold)
+                            Text("Connect").fontWeight(.semibold)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -251,15 +224,11 @@ struct OnboardingView: View {
                 }
                 .disabled(!canConnect || isValidating)
 
-                // Help text
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Don't have a server yet?")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
+                        .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                     Text("Run `bash api/start.sh` in your DevSignal project folder, then come back here.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(.caption).foregroundStyle(.tertiary)
                 }
                 .padding(14)
                 .background(Color.dsGroupedSurface)
@@ -283,27 +252,33 @@ struct OnboardingView: View {
         let trimmedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Temporarily set credentials so APIClient can use them
-        env.baseURL = trimmedURL
-        env.apiKey  = trimmedKey
+        do {
+            // Temporary Keychain write so APIClient can read the key during
+            // the health check below.
+            try KeychainManager.save(trimmedURL, for: .baseURL)
+            try KeychainManager.save(trimmedKey, for: .apiKey)
 
-        // Validate by calling a protected endpoint
+            // Update the observable baseURL so APIClient.makeRequest() can
+            // construct the correct URL.  The key itself stays in Keychain.
+            env.baseURL = trimmedURL
+
+        } catch {
+            errorMessage = "Couldn't write credentials to Keychain. Try again."
+            isValidating = false
+            return
+        }
+
         let isReachable = await APIClient.shared.checkHealth()
 
         if isReachable {
-            // Save to Keychain permanently
-            do {
-                try env.saveCredentials(baseURL: trimmedURL, apiKey: trimmedKey)
-                // isConfigured is now true → AppRouter switches to main app
-            } catch {
-                errorMessage = "Couldn't save credentials securely. Try again."
-                env.baseURL = ""
-                env.apiKey  = ""
-            }
+            // Keychain already has the correct values from the write above.
+            // AppEnvironment.isConfigured will now return true and AppRouter
+            // will switch to MainTabView automatically.
         } else {
+            // Validation failed — wipe the temporary Keychain entries.
+            KeychainManager.clearAll()
+            env.baseURL    = ""
             errorMessage = "Couldn't reach the server. Check the URL and make sure `bash api/start.sh` is running."
-            env.baseURL = ""
-            env.apiKey  = ""
         }
 
         isValidating = false
@@ -330,12 +305,8 @@ struct FeatureRow: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(title).font(.subheadline).fontWeight(.semibold)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
             }
 
             Spacer()
