@@ -1,4 +1,3 @@
-
 import hmac
 import json
 import sys
@@ -9,56 +8,49 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config.settings import PIPELINE_API_KEY
 
-
-# Public paths that skip ALL authentication
-PUBLIC_PATHS = {
-    "/health",
-    "/docs",
-    "/openapi.json",
-    "/redoc",
-    "/n8n-ping",
-    "/auth/register",
-    "/auth/login",
-}
+from config.settings import PIPELINE_API_KEY, PUBLIC_PATHS
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
-        # ── Skip auth for public paths ────────────────────────────────────
+        # ── Skip auth for public paths ──────────────────────────────────────
+        # PUBLIC_PATHS is a frozenset defined in settings.py.
+        # In development it includes /docs, /openapi.json, /redoc.
+        # In production those paths are absent so this branch is never taken
+        # for them (and FastAPI itself won't even register those routes).
         if request.url.path in PUBLIC_PATHS:
             request.state.user = None
             return await call_next(request)
 
-        # ── Read credentials from request ─────────────────────────────────
-        x_api_key    = request.headers.get("X-API-Key", "")
-        auth_header  = request.headers.get("Authorization", "")
+        # ── Read credentials from request ───────────────────────────────────
+        x_api_key   = request.headers.get("X-API-Key", "")
+        auth_header = request.headers.get("Authorization", "")
 
-        # ── Mode 1: Static API key ────────────────────────────────────────
-        # Use hmac.compare_digest instead of != to prevent timing attacks.
-        # Both strings are encoded to bytes because compare_digest requires
-        # the same type on both sides.
+        # ── Mode 1: Static pipeline API key ────────────────────────────────
+        
         if x_api_key:
             if hmac.compare_digest(
                 x_api_key.encode("utf-8"),
                 PIPELINE_API_KEY.encode("utf-8"),
             ):
-                request.state.user = None   # personal mode, no user object
+                request.state.user = None
                 return await call_next(request)
 
-            # Key looks like a user-generated key ("ds_…") — try the DB
+            # Per-user ds_ key — look up in the database
             if x_api_key.startswith("ds_"):
                 user = _lookup_user_api_key(x_api_key)
                 if user is not None:
                     request.state.user = user
                     return await call_next(request)
 
-            # Key provided but matched nothing — reject immediately
+            # Key provided but matched nothing — reject immediately.
+            # We do NOT fall through to the JWT branch so that a wrong key
+            # always returns 401 rather than silently trying other methods.
             return _unauthorized("Invalid API key.")
 
-        # ── Mode 3: JWT Bearer token ──────────────────────────────────────
+        # ── Mode 2: JWT Bearer token ────────────────────────────────────────
         if auth_header.startswith("Bearer "):
             token = auth_header[len("Bearer "):]
             user  = _verify_jwt(token)
@@ -67,7 +59,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             return _unauthorized("Invalid or expired token.")
 
-        # ── No credentials at all ─────────────────────────────────────────
+        # ── No credentials at all ───────────────────────────────────────────
         return _unauthorized(
             "Authentication required. "
             "Pass X-API-Key header or Authorization: Bearer <token>."
