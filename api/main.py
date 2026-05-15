@@ -1,4 +1,3 @@
-
 import asyncio
 import sys
 import os
@@ -26,12 +25,20 @@ from api.auth import (
 from api.worker import get_arq_pool
 from storage.async_db import async_db
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Import security-aware settings
+# ALLOWED_ORIGINS and PUBLIC_PATHS are computed in settings.py based on
+# APP_ENV so this file needs zero conditional logic — settings owns the policy.
+# ─────────────────────────────────────────────────────────────────────────────
+
+from config.settings import APP_ENV, ALLOWED_ORIGINS, PUBLIC_PATHS
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LIFESPAN — ARQ pool created once at startup, shared across requests
+# LIFESPAN
 # ─────────────────────────────────────────────────────────────────────────────
 
-_arq_pool = None   # set during lifespan startup
+_arq_pool = None
 
 
 @asynccontextmanager
@@ -41,8 +48,6 @@ async def lifespan(app: FastAPI):
         _arq_pool = await get_arq_pool()
         print("[API] ARQ Redis pool ready")
     except Exception as exc:
-        # Redis is optional — if it's unavailable, /run-pipeline will
-        # fall back to the legacy Popen behaviour and log a warning.
         print(f"[API] WARNING: could not connect to Redis: {exc}")
         print("[API] /run-pipeline will use legacy subprocess fallback.")
     yield
@@ -52,21 +57,37 @@ async def lifespan(app: FastAPI):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # APP SETUP
+#
+# SEC-2 fix: docs_url / redoc_url / openapi_url are set to None in production
+# so FastAPI never registers those routes at all — they cannot be accessed
+# even if someone guesses the URL.  In development they stay at the defaults.
 # ─────────────────────────────────────────────────────────────────────────────
+
+_docs_url     = None if APP_ENV == "production" else "/docs"
+_redoc_url    = None if APP_ENV == "production" else "/redoc"
+_openapi_url  = None if APP_ENV == "production" else "/openapi.json"
 
 app = FastAPI(
     title="DevSignal API",
     description="iOS backend for DevSignal — AI-powered iOS job radar",
     version="3.0.0",
     lifespan=lifespan,
+    # SEC-2: disabling these routes in production removes the endpoint
+    # entirely — no middleware needed for the URLs that no longer exist.
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten in production (see audit SEC-1)
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+    max_age=600,   # browsers may cache preflight results for 10 minutes
 )
 
 app.add_middleware(APIKeyMiddleware)
@@ -88,7 +109,7 @@ class CreateAPIKeyRequest(BaseModel):
     name: str = "default"
 
 class ApplyRequest(BaseModel):
-    stage: str  # applied | waiting | replied | interview | offer | rejected
+    stage: str
 
 class UpdateApplicationRequest(BaseModel):
     stage: Optional[str] = None
@@ -172,15 +193,11 @@ async def n8n_ping():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ARCH-2  AUTH ENDPOINTS
+# AUTH ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/auth/register", tags=["auth"], status_code=201)
 async def register(body: RegisterRequest):
-    """
-    Creates a new user account.
-    Returns the user record and a JWT access token.
-    """
     user  = create_user(email=body.email, password=body.password)
     token = create_access_token(user_id=user["id"], email=user["email"])
     return {"user": user, "access_token": token, "token_type": "bearer"}
@@ -188,10 +205,6 @@ async def register(body: RegisterRequest):
 
 @app.post("/auth/login", tags=["auth"])
 async def login(body: LoginRequest):
-    """
-    Authenticates with email + password.
-    Returns a JWT access token valid for JWT_EXPIRE_MINUTES minutes.
-    """
     user = get_user_by_email(body.email)
     if user is None or not verify_password(body.password, user["hashed_password"]):
         raise HTTPException(
@@ -217,7 +230,6 @@ async def login(body: LoginRequest):
 
 @app.get("/auth/me", tags=["auth"])
 async def me(user: dict = Depends(require_user)):
-    """Returns the currently authenticated user's profile."""
     return {"id": user["id"], "email": user["email"], "plan": user["plan"]}
 
 
@@ -226,13 +238,9 @@ async def create_api_key(
     body: CreateAPIKeyRequest,
     user: dict = Depends(require_user),
 ):
-    """
-    Generates a new per-user API key.
-    The raw key is returned ONCE — store it in the iOS Keychain immediately.
-    """
     raw_key = create_api_key_for_user(user_id=user["id"], name=body.name)
     return {
-        "api_key": raw_key,   # shown once — never stored in plaintext
+        "api_key": raw_key,
         "name":    body.name,
         "message": "Store this key securely. It will not be shown again.",
     }
@@ -240,13 +248,11 @@ async def create_api_key(
 
 @app.get("/auth/api-keys", tags=["auth"])
 async def get_api_keys(user: dict = Depends(require_user)):
-    """Lists all active API keys for the current user (hashes not included)."""
     return list_api_keys_for_user(user_id=user["id"])
 
 
 @app.delete("/auth/api-keys/{key_id}", tags=["auth"])
 async def delete_api_key(key_id: str, user: dict = Depends(require_user)):
-    """Revokes an API key. The iOS app will need to generate a new one."""
     revoked = revoke_api_key(key_id=key_id, user_id=user["id"])
     if not revoked:
         raise HTTPException(status_code=404, detail="API key not found.")
@@ -330,7 +336,6 @@ async def get_outreach(job_id: str):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # APPLICATION ENDPOINTS
-# ARCH-3: update_application_status call removed — DB trigger handles the sync
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/jobs/{job_id}/apply", tags=["applications"])
@@ -345,10 +350,6 @@ async def apply_to_job(job_id: str, body: ApplyRequest):
         if job is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-        # ARCH-3: only one write needed.
-        # The trg_sync_application_to_opportunity trigger will automatically
-        # update opportunities.response_status and interview_stage inside the
-        # same transaction — no dual-write, no possibility of drift.
         application = await async_db.upsert_application(
             job_id=int(job_id), stage=body.stage
         )
@@ -460,38 +461,20 @@ async def register_device(body: DeviceRegistrationRequest):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ARCH-4  PIPELINE ENDPOINTS
-#
-# POST /run-pipeline  — enqueues the pipeline task in ARQ/Redis.
-#   Returns a job_id immediately (non-blocking).
-#   Falls back to legacy Popen if Redis is unavailable (personal-mode compat).
-#
-# GET  /pipeline/status/{job_id}  — polls ARQ for task result.
+# PIPELINE ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/run-pipeline", tags=["pipeline"])
 async def run_pipeline():
-    """
-    Enqueues the full pipeline (scrape → score → enrich → notify) via ARQ.
-
-    Returns a job_id that can be polled with GET /pipeline/status/{job_id}.
-    If Redis is unavailable, falls back to the legacy Popen approach and
-    returns pid instead of job_id (personal-mode backward compatibility).
-    """
     global _arq_pool
 
-    # ── ARQ path (preferred) ──────────────────────────────────────────────
     if _arq_pool is not None:
         try:
             job = await _arq_pool.enqueue_job(
                 "run_pipeline",
-                # _job_id makes the queue idempotent: if a pipeline is already
-                # running, ARQ returns the same job_id instead of queuing a second
-                # run — this prevents the double-run race condition from ARCH-4.
                 _job_id="pipeline_singleton",
             )
             if job is None:
-                # job is None when _job_id already exists in the queue/running
                 return {
                     "status":  "already_running",
                     "job_id":  "pipeline_singleton",
@@ -504,9 +487,7 @@ async def run_pipeline():
             }
         except Exception as exc:
             print(f"[API] ARQ enqueue failed: {exc} — falling back to Popen")
-            # Fall through to legacy path
 
-    # ── Legacy Popen fallback (personal mode without Redis) ───────────────
     import subprocess
     from pathlib import Path
 
@@ -523,8 +504,7 @@ async def run_pipeline():
         return {
             "status":  "started",
             "pid":     proc.pid,
-            "message": "Pipeline started (legacy mode — Redis unavailable). "
-                    "No status tracking available.",
+            "message": "Pipeline started (legacy mode — Redis unavailable).",
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {e}")
@@ -532,16 +512,6 @@ async def run_pipeline():
 
 @app.get("/pipeline/status/{job_id}", tags=["pipeline"])
 async def pipeline_status(job_id: str):
-    """
-    Returns the current status of an ARQ pipeline job.
-
-    Possible status values:
-    queued     — waiting in the queue, not yet started
-    in_progress — currently running
-    complete   — finished successfully (result contains pipeline output)
-    failed     — failed after max_tries retries
-    not_found  — job_id unknown (expired from Redis or never created)
-    """
     global _arq_pool
     if _arq_pool is None:
         raise HTTPException(
@@ -558,7 +528,7 @@ async def pipeline_status(job_id: str):
         if jstatus == JobStatus.not_found:
             return {"job_id": job_id, "status": "not_found"}
 
-        result = await job.result(timeout=0)   # timeout=0 → don't wait
+        result = await job.result(timeout=0)
         return {
             "job_id": job_id,
             "status": jstatus.value,
