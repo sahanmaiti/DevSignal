@@ -31,6 +31,8 @@ from api.worker import get_arq_pool
 from storage.async_db import async_db
 from config.settings import APP_ENV, ALLOWED_ORIGINS, PUBLIC_PATHS
 
+from storage.cache import cache
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LIMITER
@@ -432,12 +434,30 @@ async def update_application(
 # STATS
 # ─────────────────────────────────────────────────────────────────────────────
 
+STATS_CACHE_KEY = "stats:global"
+STATS_TTL       = 300   # 5 minutes
+
+
 @app.get("/stats", tags=["analytics"])
 @limiter.limit("30/minute")
 async def get_stats(request: Request):
+    """
+    Returns aggregated pipeline statistics.
+
+    Cache strategy:
+    - Redis TTL: 5 minutes (matches iOS pull-to-refresh UX)
+    - Cache is invalidated automatically by POST /run-pipeline
+    - Falls back to live DB query if Redis is unavailable
+    """
+    # ── Cache hit ─────────────────────────────────────────────────────────
+    cached = await cache.get(STATS_CACHE_KEY)
+    if cached is not None:
+        return cached
+
+    # ── Cache miss — query Postgres ───────────────────────────────────────
     try:
         stats = await async_db.get_dashboard_stats()
-        return {
+        response = {
             "total_jobs":         stats.get("total_jobs", 0),
             "avg_score":          round(stats.get("avg_score", 0.0), 1),
             "jobs_above_70":      stats.get("jobs_above_70", 0),
@@ -449,9 +469,14 @@ async def get_stats(request: Request):
             "score_distribution": stats.get("score_distribution", []),
             "top_sources":        stats.get("top_sources", []),
         }
+
+        # Store in Redis — fire and forget (don't await failure)
+        await cache.set(STATS_CACHE_KEY, response, ttl=STATS_TTL)
+
+        return response
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVICES
@@ -476,15 +501,10 @@ async def register_device(request: Request, body: DeviceRegistrationRequest):
 @app.post("/run-pipeline", tags=["pipeline"])
 @limiter.limit("1/10minute")
 async def run_pipeline(request: Request):
-    """
-    Triggers the full DevSignal pipeline (scrape → score → enrich → notify).
-
-    Rate limit: 1 request per 10 minutes per IP.
-    This is the most important limit in the whole API — one actor calling
-    this in a tight loop would exhaust your entire Groq free quota within
-    minutes and cause scraping races against the DB.
-    """
     global _arq_pool
+
+    # Invalidate cached stats — a new run will produce fresh numbers
+    await cache.delete(STATS_CACHE_KEY)
 
     if _arq_pool is not None:
         try:
@@ -501,7 +521,7 @@ async def run_pipeline(request: Request):
             return {
                 "status":  "queued",
                 "job_id":  job.job_id,
-                "message": "Pipeline enqueued. Poll /pipeline/status/pipeline_singleton for updates.",
+                "message": "Pipeline enqueued.",
             }
         except Exception as exc:
             print(f"[API] ARQ enqueue failed: {exc} — falling back to Popen")
@@ -522,11 +542,10 @@ async def run_pipeline(request: Request):
         return {
             "status":  "started",
             "pid":     proc.pid,
-            "message": "Pipeline started (legacy mode — Redis unavailable).",
+            "message": "Pipeline started (legacy mode).",
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {e}")
-
 
 @app.get("/pipeline/status/{job_id}", tags=["pipeline"])
 async def pipeline_status(job_id: str):
@@ -551,3 +570,82 @@ async def pipeline_status(job_id: str):
         return {"job_id": job_id, "status": jstatus.value, "result": result}
     except Exception as exc:
         return {"job_id": job_id, "status": "unknown", "error": str(exc)}
+    
+
+
+@app.get("/jobs/outreach", tags=["jobs"])
+@limiter.limit("20/minute")
+async def get_outreach_batch(
+    request: Request,
+    ids: str = Query(
+        ...,
+        description="Comma-separated job IDs, e.g. 1,2,3,4,5",
+        example="1,2,3",
+    ),
+):
+    """
+    Batch outreach fetch.
+
+    Replaces N individual GET /jobs/{id}/outreach calls with one request.
+    Returns a dict keyed by job_id string for easy iOS-side lookup.
+
+    Limits:
+    - Maximum 50 IDs per request (prevents accidental full-table scan)
+    - Only returns jobs that exist and have outreach content
+    """
+    # Parse and validate the id list
+    try:
+        raw_ids = [i.strip() for i in ids.split(",") if i.strip()]
+        if not raw_ids:
+            raise ValueError("Empty id list")
+        if len(raw_ids) > 50:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum 50 IDs per batch request.",
+            )
+        job_ids = [int(i) for i in raw_ids]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid ids parameter: {e}. Expected comma-separated integers.",
+        )
+
+    # Fetch all jobs concurrently
+    import asyncio
+
+    async def fetch_one(job_id: int) -> tuple[int, dict | None]:
+        try:
+            job = await async_db.get_job_by_id(job_id)
+            return job_id, job
+        except Exception:
+            return job_id, None
+
+    job_results = await asyncio.gather(
+        *[fetch_one(jid) for jid in job_ids],
+        return_exceptions=False,
+    )
+
+    # Build the response dict — only include jobs with actual outreach content
+    response: dict[str, dict] = {}
+    for job_id, job in job_results:
+        if job is None:
+            continue
+
+        message  = job.get("outreach_message", "").strip()
+        recruiter = job.get("recruiter_name", "").strip()
+        email    = job.get("email", "").strip()
+        linkedin = job.get("linkedin_profile", "").strip()
+
+        # Skip jobs with no outreach content at all
+        if not any([message, recruiter, email, linkedin]):
+            continue
+
+        response[str(job_id)] = {
+            "job_id":          str(job_id),
+            "message":         message or None,
+            "recruiter_name":  recruiter or None,
+            "recruiter_email": email or None,
+            "linkedin_url":    linkedin or None,
+        }
+
+    return response
