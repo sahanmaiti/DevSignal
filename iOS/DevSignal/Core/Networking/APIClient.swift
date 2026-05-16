@@ -1,3 +1,7 @@
+// All methods are inside the APIClient final class.
+// fetchOutreachBatch is added after fetchOutreach — both use the
+// private fetch() helper, which is only visible inside this class.
+
 import Foundation
 
 @MainActor
@@ -23,7 +27,6 @@ final class APIClient {
     ) throws -> URLRequest {
 
         let base = AppEnvironment.shared.baseURL
-
         let key  = AppEnvironment.shared.currentAPIKey()
 
         guard var urlComponents = URLComponents(string: base + path) else {
@@ -46,9 +49,9 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue(key,              forHTTPHeaderField: "X-API-Key")
+        request.setValue(key,                forHTTPHeaderField: "X-API-Key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("no-cache",       forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache",         forHTTPHeaderField: "Cache-Control")
         request.timeoutInterval = 15
 
         if let body {
@@ -189,8 +192,48 @@ final class APIClient {
         return try await fetch(path: "/stats")
     }
 
+    // ── Single-job outreach (used by JobDetailView) ───────────────────────
+
     func fetchOutreach(jobId: String) async throws -> OutreachMessage {
         return try await fetch(path: "/jobs/\(jobId)/outreach")
+    }
+
+    // ── Batch outreach (used by OutreachViewModel) ────────────────────────
+    //
+    // Fetches outreach for up to 50 jobs in ONE HTTP request instead of N.
+    // The server returns [String: OutreachBatchItem] keyed by job ID.
+    // We convert each item into a full OutreachMessage for the caller.
+    //
+    // WHY fetch() can be called here:
+    //   fetch() is a private method of APIClient.
+    //   fetchOutreachBatch() is also a method of APIClient (same class body).
+    //   Private members are visible to all methods in the same type.
+
+    func fetchOutreachBatch(jobIds: [String]) async throws -> [String: OutreachMessage] {
+        guard !jobIds.isEmpty else { return [:] }
+
+        // Cap at 50 to match the server-side limit
+        let ids = jobIds.prefix(50).joined(separator: ",")
+
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "ids", value: ids)]
+        let queryString = components.percentEncodedQuery.map { "?\($0)" } ?? ""
+
+        // Decode as [String: OutreachBatchItem] — the key is the job ID string
+        let raw: [String: OutreachBatchItem] = try await fetch(
+            path: "/jobs/outreach\(queryString)"
+        )
+
+        // Convert each OutreachBatchItem to a full OutreachMessage
+        return raw.reduce(into: [:]) { dict, pair in
+            dict[pair.key] = OutreachMessage(
+                jobId:          pair.key,
+                message:        pair.value.message,
+                recruiterName:  pair.value.recruiterName,
+                recruiterEmail: pair.value.recruiterEmail,
+                linkedinUrl:    pair.value.linkedinUrl
+            )
+        }
     }
 
     func fetchJobsWithOutreach(page: Int = 1) async throws -> JobsPage {
@@ -247,4 +290,5 @@ final class APIClient {
     func runPipeline() async throws -> RunPipelineResponse {
         return try await fetch(path: "/run-pipeline", method: "POST")
     }
-}
+
+}   // ← end of APIClient class — ALL methods above are inside this brace
