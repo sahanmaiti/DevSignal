@@ -9,6 +9,11 @@ from fastapi import FastAPI, HTTPException, Query, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# ── SEC-4: slowapi ────────────────────────────────────────────────────────────
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from api.middleware import APIKeyMiddleware
@@ -24,14 +29,17 @@ from api.auth import (
 )
 from api.worker import get_arq_pool
 from storage.async_db import async_db
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Import security-aware settings
-# ALLOWED_ORIGINS and PUBLIC_PATHS are computed in settings.py based on
-# APP_ENV so this file needs zero conditional logic — settings owns the policy.
-# ─────────────────────────────────────────────────────────────────────────────
-
 from config.settings import APP_ENV, ALLOWED_ORIGINS, PUBLIC_PATHS
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIMITER
+#
+# get_remote_address reads X-Forwarded-For first, then falls back to the
+# direct connection IP — correct behind any reverse proxy / CDN.
+# ─────────────────────────────────────────────────────────────────────────────
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -56,45 +64,41 @@ async def lifespan(app: FastAPI):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# APP SETUP
-#
-# SEC-2 fix: docs_url / redoc_url / openapi_url are set to None in production
-# so FastAPI never registers those routes at all — they cannot be accessed
-# even if someone guesses the URL.  In development they stay at the defaults.
+# APP
 # ─────────────────────────────────────────────────────────────────────────────
 
-_docs_url     = None if APP_ENV == "production" else "/docs"
-_redoc_url    = None if APP_ENV == "production" else "/redoc"
-_openapi_url  = None if APP_ENV == "production" else "/openapi.json"
+_docs_url    = None if APP_ENV == "production" else "/docs"
+_redoc_url   = None if APP_ENV == "production" else "/redoc"
+_openapi_url = None if APP_ENV == "production" else "/openapi.json"
 
 app = FastAPI(
     title="DevSignal API",
     description="iOS backend for DevSignal — AI-powered iOS job radar",
     version="3.0.0",
     lifespan=lifespan,
-    # SEC-2: disabling these routes in production removes the endpoint
-    # entirely — no middleware needed for the URLs that no longer exist.
     docs_url=_docs_url,
     redoc_url=_redoc_url,
     openapi_url=_openapi_url,
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# SEC-1: CORS — no wildcard
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
-    max_age=600,   # browsers may cache preflight results for 10 minutes
+    max_age=600,
 )
 
 app.add_middleware(APIKeyMiddleware)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# REQUEST / RESPONSE MODELS
+# MODELS
 # ─────────────────────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
@@ -148,33 +152,33 @@ def serialize_job(row: dict) -> dict:
         return None
 
     return {
-        "id":               row.get("id"),
+        "id":                 row.get("id"),
         "title": (
             row.get("title")
             or row.get("job_title")
             or row.get("role")
             or extract_title_from_url(row.get("url") or "")
         ),
-        "company":            row.get("company") or "Unknown Company",
-        "source":             row.get("source") or row.get("job_source"),
-        "url":                row.get("url") or row.get("apply_link"),
-        "score":              row.get("score") or row.get("opportunity_score"),
-        "score_breakdown":    row.get("score_breakdown"),
-        "score_explanation":  row.get("score_explanation"),
-        "is_remote":          to_bool(row.get("is_remote") or row.get("remote")),
-        "visa_sponsorship":   to_bool(row.get("visa_sponsorship")),
-        "is_ios_product":     row.get("is_ios_product"),
+        "company":             row.get("company") or "Unknown Company",
+        "source":              row.get("source") or row.get("job_source"),
+        "url":                 row.get("url") or row.get("apply_link"),
+        "score":               row.get("score") or row.get("opportunity_score"),
+        "score_breakdown":     row.get("score_breakdown"),
+        "score_explanation":   row.get("score_explanation"),
+        "is_remote":           to_bool(row.get("is_remote") or row.get("remote")),
+        "visa_sponsorship":    to_bool(row.get("visa_sponsorship")),
+        "is_ios_product":      row.get("is_ios_product"),
         "experience_required": row.get("experience_required") or row.get("experience_req"),
-        "location":           row.get("location"),
-        "salary":             row.get("salary"),
-        "posted_at":          dt_to_str(row.get("posted_at") or row.get("date_found")),
-        "discovered_at":      dt_to_str(row.get("discovered_at") or row.get("date_found")),
-        "application_status": row.get("application_status"),
+        "location":            row.get("location"),
+        "salary":              row.get("salary"),
+        "posted_at":           dt_to_str(row.get("posted_at") or row.get("date_found")),
+        "discovered_at":       dt_to_str(row.get("discovered_at") or row.get("date_found")),
+        "application_status":  row.get("application_status"),
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UTILITY ENDPOINTS
+# UTILITY  (no rate limit — must always respond for health probes)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["utility"])
@@ -193,18 +197,20 @@ async def n8n_ping():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AUTH ENDPOINTS
+# AUTH
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/auth/register", tags=["auth"], status_code=201)
-async def register(body: RegisterRequest):
+@limiter.limit("5/hour")
+async def register(request: Request, body: RegisterRequest):
     user  = create_user(email=body.email, password=body.password)
     token = create_access_token(user_id=user["id"], email=user["email"])
     return {"user": user, "access_token": token, "token_type": "bearer"}
 
 
 @app.post("/auth/login", tags=["auth"])
-async def login(body: LoginRequest):
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest):
     user = get_user_by_email(body.email)
     if user is None or not verify_password(body.password, user["hashed_password"]):
         raise HTTPException(
@@ -220,11 +226,7 @@ async def login(body: LoginRequest):
     return {
         "access_token": token,
         "token_type":   "bearer",
-        "user": {
-            "id":    user["id"],
-            "email": user["email"],
-            "plan":  user["plan"],
-        },
+        "user": {"id": user["id"], "email": user["email"], "plan": user["plan"]},
     }
 
 
@@ -234,7 +236,9 @@ async def me(user: dict = Depends(require_user)):
 
 
 @app.post("/auth/api-keys", tags=["auth"], status_code=201)
+@limiter.limit("5/hour")
 async def create_api_key(
+    request: Request,
     body: CreateAPIKeyRequest,
     user: dict = Depends(require_user),
 ):
@@ -260,11 +264,13 @@ async def delete_api_key(key_id: str, user: dict = Depends(require_user)):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JOB ENDPOINTS
+# JOBS
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/jobs", tags=["jobs"])
+@limiter.limit("30/minute")
 async def get_jobs(
+    request: Request,
     min_score:  int            = Query(default=0,  ge=0,  le=100),
     remote:     Optional[bool] = Query(default=None),
     visa:       Optional[bool] = Query(default=None),
@@ -276,18 +282,16 @@ async def get_jobs(
 ):
     try:
         filters: dict = {"min_score": min_score, "days_fresh": days_fresh}
-        if remote  is not None: filters["is_remote"]        = "Yes" if remote else "No"
-        if visa    is not None: filters["visa_sponsorship"]  = visa
-        if source  is not None: filters["source"]            = source
-        if applied is not None: filters["exclude_applied"]   = not applied
+        if remote  is not None: filters["is_remote"]       = "Yes" if remote else "No"
+        if visa    is not None: filters["visa_sponsorship"] = visa
+        if source  is not None: filters["source"]           = source
+        if applied is not None: filters["exclude_applied"]  = not applied
 
         offset = (page - 1) * per_page
-
         jobs_raw, total = await asyncio.gather(
             async_db.get_jobs_filtered(filters, limit=per_page + 1, offset=offset),
             async_db.count_jobs_filtered(filters),
         )
-
         has_more  = len(jobs_raw) > per_page
         jobs_page = jobs_raw[:per_page]
 
@@ -303,7 +307,8 @@ async def get_jobs(
 
 
 @app.get("/jobs/{job_id}", tags=["jobs"])
-async def get_job(job_id: str):
+@limiter.limit("60/minute")
+async def get_job(request: Request, job_id: str):
     try:
         job = await async_db.get_job_by_id(job_id)
         if job is None:
@@ -316,7 +321,8 @@ async def get_job(job_id: str):
 
 
 @app.get("/jobs/{job_id}/outreach", tags=["jobs"])
-async def get_outreach(job_id: str):
+@limiter.limit("60/minute")
+async def get_outreach(request: Request, job_id: str):
     try:
         job = await async_db.get_job_by_id(job_id)
         if job is None:
@@ -335,11 +341,12 @@ async def get_outreach(job_id: str):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# APPLICATION ENDPOINTS
+# APPLICATIONS
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/jobs/{job_id}/apply", tags=["applications"])
-async def apply_to_job(job_id: str, body: ApplyRequest):
+@limiter.limit("20/minute")
+async def apply_to_job(request: Request, job_id: str, body: ApplyRequest):
     if body.stage not in VALID_STAGES:
         raise HTTPException(
             status_code=400,
@@ -353,7 +360,6 @@ async def apply_to_job(job_id: str, body: ApplyRequest):
         application = await async_db.upsert_application(
             job_id=int(job_id), stage=body.stage
         )
-
         return {
             "application_id": str(application.get("id")),
             "job_id":         job_id,
@@ -390,13 +396,14 @@ async def get_applications():
 
 
 @app.patch("/applications/{application_id}", tags=["applications"])
-async def update_application(application_id: str,
-                            body: UpdateApplicationRequest):
+@limiter.limit("30/minute")
+async def update_application(
+    request: Request,
+    application_id: str,
+    body: UpdateApplicationRequest,
+):
     if body.stage is not None and body.stage not in VALID_STAGES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid stage '{body.stage}'"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid stage '{body.stage}'")
     try:
         updated = await async_db.update_application(
             application_id=application_id,
@@ -426,7 +433,8 @@ async def update_application(application_id: str,
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/stats", tags=["analytics"])
-async def get_stats():
+@limiter.limit("30/minute")
+async def get_stats(request: Request):
     try:
         stats = await async_db.get_dashboard_stats()
         return {
@@ -450,7 +458,8 @@ async def get_stats():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/devices", tags=["notifications"])
-async def register_device(body: DeviceRegistrationRequest):
+@limiter.limit("10/hour")
+async def register_device(request: Request, body: DeviceRegistrationRequest):
     try:
         await async_db.upsert_device_token(
             token=body.device_token, platform=body.platform
@@ -461,11 +470,20 @@ async def register_device(body: DeviceRegistrationRequest):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PIPELINE ENDPOINTS
+# PIPELINE
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/run-pipeline", tags=["pipeline"])
-async def run_pipeline():
+@limiter.limit("1/10minute")
+async def run_pipeline(request: Request):
+    """
+    Triggers the full DevSignal pipeline (scrape → score → enrich → notify).
+
+    Rate limit: 1 request per 10 minutes per IP.
+    This is the most important limit in the whole API — one actor calling
+    this in a tight loop would exhaust your entire Groq free quota within
+    minutes and cause scraping races against the DB.
+    """
     global _arq_pool
 
     if _arq_pool is not None:
@@ -512,6 +530,7 @@ async def run_pipeline():
 
 @app.get("/pipeline/status/{job_id}", tags=["pipeline"])
 async def pipeline_status(job_id: str):
+    # No rate limit — cheap Redis read, no side effects
     global _arq_pool
     if _arq_pool is None:
         raise HTTPException(
@@ -522,17 +541,13 @@ async def pipeline_status(job_id: str):
     try:
         from arq.jobs import Job, JobStatus
 
-        job    = Job(job_id=job_id, redis=_arq_pool)
+        job     = Job(job_id=job_id, redis=_arq_pool)
         jstatus = await job.status()
 
         if jstatus == JobStatus.not_found:
             return {"job_id": job_id, "status": "not_found"}
 
         result = await job.result(timeout=0)
-        return {
-            "job_id": job_id,
-            "status": jstatus.value,
-            "result": result,
-        }
+        return {"job_id": job_id, "status": jstatus.value, "result": result}
     except Exception as exc:
         return {"job_id": job_id, "status": "unknown", "error": str(exc)}
