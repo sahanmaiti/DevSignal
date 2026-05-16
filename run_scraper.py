@@ -5,6 +5,7 @@ import sys
 import os
 import time
 import subprocess
+import concurrent.futures   
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -50,26 +51,33 @@ def print_line(char="─", width=65):
     print(char * width)
 
 
+
 def run_tier(scrapers, label, delay=0):
     print(f"\n{'─' * 65}")
     print(f"  {label}")
     print(f"{'─' * 65}")
 
     all_jobs = []
-    counts = {}
+    counts   = {}
 
-    for scraper in scrapers:
-        try:
-            jobs = scraper.run()
-            counts[scraper.SOURCE_NAME] = len(jobs)
-            all_jobs.extend(jobs)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+        future_to_scraper = {
+            pool.submit(scraper.run): scraper
+            for scraper in scrapers
+        }
 
-            if delay:
-                time.sleep(delay)
+        for future in concurrent.futures.as_completed(future_to_scraper):
+            scraper = future_to_scraper[future]
+            try:
+                jobs = future.result()
+                counts[scraper.SOURCE_NAME] = len(jobs)
+                all_jobs.extend(jobs)
+            except Exception as e:
+                print(f"  [{scraper.SOURCE_NAME}] FATAL: {e}")
+                counts[scraper.SOURCE_NAME] = 0
 
-        except Exception as e:
-            print(f"  [{scraper.SOURCE_NAME}] FATAL: {e}")
-            counts[scraper.SOURCE_NAME] = 0
+    if delay:
+        time.sleep(delay)
 
     return all_jobs, counts
 
