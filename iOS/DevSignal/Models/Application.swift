@@ -149,3 +149,32 @@ struct Application: Decodable, Identifiable, Hashable {
         updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt)
     }
 }
+extension Application {
+    /// Returns a copy of this application with a different stage.
+    /// Used by TrackerViewModel to update the local array without re-fetching.
+    func withStage(_ newStage: ApplicationStage) -> Application {
+        // We can't use a memberwise copy because Application has a custom
+        // init(from:). Encode to JSON and decode back with the new stage
+        // injected — this is the cleanest way to "copy with one field changed"
+        // for a Decodable-only struct.
+        var dict: [String: Any] = [
+            "application_id": applicationId,
+            "job_id":         jobId,
+            "company":        company,
+            "title":          title,
+            "stage":          newStage.rawValue,
+        ]
+        if let score     { dict["score"]      = score }
+        if let source    { dict["source"]     = source }
+        if let appliedAt { dict["applied_at"] = appliedAt }
+        if let notes     { dict["notes"]      = notes }
+        if let updatedAt { dict["updated_at"] = updatedAt }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              let updated = try? JSONDecoder().decode(Application.self, from: data)
+        else {
+            return self  // fallback — keep original if decode fails
+        }
+        return updated
+    }
+}

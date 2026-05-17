@@ -18,17 +18,21 @@ import Combine
 
 @MainActor
 final class TrackerViewModel: ObservableObject {
-
+    
     @Published var applications: [Application] = []
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     @Published var movedCardId: String? = nil
     @Published private var stageOverrides: [String: ApplicationStage] = [:]
+    
+    private let api: any APIClientProtocol
 
-    private let api = APIClient.shared
-
+    init(api: (any APIClientProtocol)? = nil) {
+        self.api = api ?? APIClient.shared
+    }
+    
     // ── Derived ───────────────────────────────────────────────────────────
-
+    
     func cards(for stage: ApplicationStage) -> [Application] {
         applications
             .filter { app in
@@ -37,15 +41,15 @@ final class TrackerViewModel: ObservableObject {
             }
             .sorted { ($0.updatedAt ?? "") > ($1.updatedAt ?? "") }
     }
-
+    
     var totalCount: Int { applications.count }
-
+    
     func countFor(_ stage: ApplicationStage) -> Int {
         cards(for: stage).count
     }
-
+    
     // ── Load / Refresh ────────────────────────────────────────────────────
-
+    
     func load() async {
         guard !isLoading else { return }
         isLoading = true
@@ -59,7 +63,7 @@ final class TrackerViewModel: ObservableObject {
         }
         isLoading = false
     }
-
+    
     func refresh() async {
         do {
             // Clear overrides FIRST so server is source of truth after refresh
@@ -72,58 +76,71 @@ final class TrackerViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
-
+    
     func clearOverrides() {
         stageOverrides = [:]
     }
-
+    
     // ── Move card (optimistic) ────────────────────────────────────────────
-
+    
     func moveCard(_ application: Application, to newStage: ApplicationStage) async {
         let currentOverride = stageOverrides[application.applicationId]
         let oldStage = currentOverride ?? application.stage
         guard oldStage != newStage else { return }
-
-        // 1. Optimistic update
+        
+        // 1. Optimistic update — UI moves immediately
         stageOverrides[application.applicationId] = newStage
-
-        // 2. Brief highlight
+        
+        // 2. Brief highlight animation
         movedCardId = application.applicationId
         Task {
             try? await Task.sleep(nanoseconds: 800_000_000)
             if movedCardId == application.applicationId { movedCardId = nil }
         }
-
+        
         // 3. Persist to server
         do {
             try await api.updateApplication(
                 applicationId: application.applicationId,
-                stage: newStage.rawValue
+                stage:         newStage.rawValue,
+                notes:         nil
             )
-            // SUCCESS: remove override — server now holds the truth
+            
+            // SUCCESS: update the local array directly — no re-fetch needed.
+            // This avoids the race where a second in-flight fetch overwrites
+            // a concurrent optimistic move.
+            if let idx = applications.firstIndex(where: {
+                $0.applicationId == application.applicationId
+            }) {
+                applications[idx] = application.withStage(newStage)
+            }
+            
+            // Remove the override now that the local array is authoritative.
             stageOverrides.removeValue(forKey: application.applicationId)
-            // Update local model so it matches without needing a full refresh
-            if let fresh = try? await api.fetchApplications() {
-                applications = fresh
-            }
-            }
-         catch {
-            // FAILURE: revert
+            
+        } catch {
+            // FAILURE: revert the optimistic update
             stageOverrides[application.applicationId] = oldStage
             errorMessage = "Couldn't update stage. Check your connection."
         }
     }
-
+    
     // ── Save notes ────────────────────────────────────────────────────────
-
+    
     func saveNotes(for application: Application, notes: String) async {
         do {
             try await api.updateApplication(
                 applicationId: application.applicationId,
-                notes: notes
+                stage:         nil,
+                notes:         notes
             )
-            if let fresh = try? await api.fetchApplications() {
-                applications = fresh
+            // Update local array directly instead of re-fetching
+            if applications.contains(where: { $0.applicationId == application.applicationId }) {
+                // notes isn't in Application's withStage helper, so do a refresh
+                // only after notes save (single-user action, no race risk here)
+                if let fresh = try? await api.fetchApplications() {
+                    applications = fresh
+                }
             }
         } catch {
             errorMessage = "Couldn't save notes."
