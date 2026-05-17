@@ -8,7 +8,11 @@ final class AnalyticsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
 
-    private let api = APIClient.shared
+    private let api: any APIClientProtocol
+
+    init(api: (any APIClientProtocol)? = nil) {
+        self.api = api ?? APIClient.shared
+    }
 
     // ── Load ──────────────────────────────────────────────────────────────
 

@@ -20,7 +20,12 @@ final class OutreachViewModel: ObservableObject, @unchecked Sendable {
     @Published var errorMessage: String? = nil
     @Published var copiedJobId: String? = nil
 
-    private let api = APIClient.shared
+    private let api: any APIClientProtocol
+
+    init(api: (any APIClientProtocol)? = nil) {
+        self.api = api ?? APIClient.shared
+    }
+
     private var hasLoaded = false
 
     // ── Load all outreach items ───────────────────────────────────────────
@@ -33,7 +38,7 @@ final class OutreachViewModel: ObservableObject, @unchecked Sendable {
         do {
             // ── Step 1: get all jobs that have outreach messages (score ≥ 45)
             // This is 1 HTTP request that returns up to 20 job summaries.
-            let page = try await api.fetchJobsWithOutreach()
+            let page = try await api.fetchJobsWithOutreach(page: 1)
             let jobs = page.jobs
 
             guard !jobs.isEmpty else {
@@ -47,13 +52,14 @@ final class OutreachViewModel: ObservableObject, @unchecked Sendable {
             // Previously this fired N concurrent requests (one per job).
             // Now it fires 1 request for all jobs simultaneously.
             // The server returns [String: OutreachBatchItem] keyed by job ID.
+            let jobIds: [String] = jobs.map { $0.id }
             let outreachMap: [String: OutreachMessage] = try await api.fetchOutreachBatch(
-                jobIds: jobs.map(\.id)
+                jobIds: jobIds
             )
 
             // ── Step 3: pair jobs with outreach, skip jobs with no content.
             // compactMap returns nil for jobs not in outreachMap (no message generated).
-            let paired: [JobWithOutreach] = jobs.compactMap { job in
+            let paired: [JobWithOutreach] = jobs.compactMap { (job: Job) -> JobWithOutreach? in
                 guard let outreach = outreachMap[job.id] else { return nil }
                 return JobWithOutreach(job: job, outreach: outreach)
             }
