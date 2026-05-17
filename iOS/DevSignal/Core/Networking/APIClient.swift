@@ -5,7 +5,7 @@
 import Foundation
 
 @MainActor
-final class APIClient {
+final class APIClient: APIClientProtocol {
 
     static let shared = APIClient()
     private init() {}
@@ -65,6 +65,62 @@ final class APIClient {
     // PRIVATE HELPER: execute a request and decode the response
     // ─────────────────────────────────────────────────────────────────────
 
+    /// Decodes a JSON array, silently skipping any elements that fail to decode.
+    /// Used for list endpoints where one bad record shouldn't blank the page.
+    private func fetchArray<T: Decodable>(
+        path: String,
+        method: String = "GET"
+    ) async throws -> [T] {
+        let request = try makeRequest(path: path, method: method)
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch is CancellationError {
+            throw APIError.cancelled
+        } catch let urlError as URLError {
+            if urlError.code == .notConnectedToInternet ||
+               urlError.code == .networkConnectionLost {
+                throw APIError.networkUnavailable
+            }
+            throw APIError.unknown(urlError.localizedDescription)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.unknown("Invalid response type")
+        }
+        switch httpResponse.statusCode {
+        case 200...299: break
+        case 401: throw APIError.unauthorized
+        case 404: throw APIError.notFound
+        case 500...599: throw APIError.serverError(httpResponse.statusCode)
+        default: throw APIError.unknown("HTTP \(httpResponse.statusCode)")
+        }
+
+        // Decode as raw JSON array first
+        guard let rawArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else {
+            // Not a JSON array — fall back to normal decode (e.g. wrapped response)
+            return (try? decoder.decode([T].self, from: data)) ?? []
+        }
+
+        // Decode each element individually, skipping failures
+        var results: [T] = []
+        var skipped = 0
+        for element in rawArray {
+            if let elementData = try? JSONSerialization.data(withJSONObject: element),
+               let decoded = try? decoder.decode(T.self, from: elementData) {
+                results.append(decoded)
+            } else {
+                skipped += 1
+            }
+        }
+        if skipped > 0 {
+            print("⚠️ APIClient: skipped \(skipped) malformed \(T.self) records")
+        }
+        return results
+    }
+    
     private func fetch<T: Decodable>(
         path: String,
         method: String = "GET",
@@ -166,24 +222,65 @@ final class APIClient {
         perPage: Int = 25
     ) async throws -> JobsPage {
 
-        var components = URLComponents()
-        var queryItems = [URLQueryItem]()
-
-        queryItems.append(URLQueryItem(name: "min_score",  value: "\(minScore)"))
-        queryItems.append(URLQueryItem(name: "days_fresh", value: "\(daysFresh)"))
-        queryItems.append(URLQueryItem(name: "page",       value: "\(page)"))
-        queryItems.append(URLQueryItem(name: "per_page",   value: "\(perPage)"))
-
+        var queryItems = [
+            URLQueryItem(name: "min_score",  value: "\(minScore)"),
+            URLQueryItem(name: "days_fresh", value: "\(daysFresh)"),
+            URLQueryItem(name: "page",       value: "\(page)"),
+            URLQueryItem(name: "per_page",   value: "\(perPage)"),
+        ]
         if let remote { queryItems.append(URLQueryItem(name: "remote", value: "\(remote)")) }
         if let visa   { queryItems.append(URLQueryItem(name: "visa",   value: "\(visa)")) }
         if let source { queryItems.append(URLQueryItem(name: "source", value: source)) }
 
+        var components = URLComponents()
         components.queryItems = queryItems
         let queryString = components.percentEncodedQuery.map { "?\($0)" } ?? ""
 
-        return try await fetch(path: "/jobs\(queryString)")
-    }
+        // Fetch the raw data so we can do partial decoding of the jobs array
+        let request = try makeRequest(path: "/jobs\(queryString)")
+        let (data, response) = try await URLSession.shared.data(for: request)
 
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.unknown("Invalid response")
+        }
+        switch httpResponse.statusCode {
+        case 200...299: break
+        case 401: throw APIError.unauthorized
+        case 404: throw APIError.notFound
+        case 500...599: throw APIError.serverError(httpResponse.statusCode)
+        default: throw APIError.unknown("HTTP \(httpResponse.statusCode)")
+        }
+
+        // Parse the envelope
+        guard let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            throw APIError.decodingFailed("Response is not a JSON object")
+        }
+
+        let total   = envelope["total"]    as? Int ?? 0
+        let pg      = envelope["page"]     as? Int ?? page
+        let perPg   = envelope["per_page"] as? Int ?? perPage
+        let hasMore = envelope["has_more"] as? Bool ?? false
+
+        // Partially decode the jobs array — skip malformed records
+        var jobs: [Job] = []
+        if let rawJobs = envelope["jobs"] as? [[String: Any]] {
+            var skipped = 0
+            for rawJob in rawJobs {
+                if let jobData = try? JSONSerialization.data(withJSONObject: rawJob),
+                   let job = try? decoder.decode(Job.self, from: jobData) {
+                    jobs.append(job)
+                } else {
+                    skipped += 1
+                }
+            }
+            if skipped > 0 {
+                print("⚠️ fetchJobs: skipped \(skipped) malformed Job records")
+            }
+        }
+
+        return JobsPage(jobs: jobs, total: total, page: pg, perPage: perPg, hasMore: hasMore)
+    }
     func fetchJob(id: String) async throws -> Job {
         return try await fetch(path: "/jobs/\(id)")
     }
@@ -255,7 +352,7 @@ final class APIClient {
     }
 
     func fetchApplications() async throws -> [Application] {
-        return try await fetch(path: "/applications")
+        return try await fetchArray(path: "/applications")
     }
 
     func updateApplication(
