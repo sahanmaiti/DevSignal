@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		DE1167D72FB8D9A300B27FFA /* AsyncSemaphore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1167D62FB8D9A100B27FFA /* AsyncSemaphore.swift */; };
 		DE7EF7C62FA62E5600F20E35 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7972FA6250900F20E35 /* AppEnvironment.swift */; };
 		DE7EF7F92FA63A8300F20E35 /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7F82FA63A8200F20E35 /* APIError.swift */; };
 		DE7EF7FB2FA63A9800F20E35 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF7FA2FA63A9700F20E35 /* APIClient.swift */; };
@@ -22,9 +23,13 @@
 		DE7EF8212FAA40BC00F20E35 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8202FAA40A300F20E35 /* OnboardingView.swift */; };
 		DE7EF8232FAA444B00F20E35 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8222FAA444B00F20E35 /* AppTheme.swift */; };
 		DE7EF8252FACA0F200F20E35 /* RunPipelineResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8242FACA0F200F20E35 /* RunPipelineResponse.swift */; };
+		DEFDC1EF2FB99FE500E9B9B8 /* APIClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFDC1EE2FB99FE300E9B9B8 /* APIClientProtocol.swift */; };
+		DEFDC1F42FB9A39B00E9B9B8 /* JobCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFDC1F32FB9A39900E9B9B8 /* JobCache.swift */; };
+		DEFDC1F62FB9A3FF00E9B9B8 /* CacheStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFDC1F52FB9A3FE00E9B9B8 /* CacheStatus.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		DE1167D62FB8D9A100B27FFA /* AsyncSemaphore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncSemaphore.swift; sourceTree = "<group>"; };
 		DE7EF7882FA624DB00F20E35 /* DevSignal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DevSignal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DE7EF7972FA6250900F20E35 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		DE7EF7A52FA625D200F20E35 /* ScoreBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreBadge.swift; sourceTree = "<group>"; };
@@ -41,6 +46,10 @@
 		DE7EF8202FAA40A300F20E35 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		DE7EF8222FAA444B00F20E35 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		DE7EF8242FACA0F200F20E35 /* RunPipelineResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPipelineResponse.swift; sourceTree = "<group>"; };
+		DEFDC1EE2FB99FE300E9B9B8 /* APIClientProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientProtocol.swift; sourceTree = "<group>"; };
+		DEFDC1F12FB9A36400E9B9B8 /* MockAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAPIClient.swift; sourceTree = "<group>"; };
+		DEFDC1F32FB9A39900E9B9B8 /* JobCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobCache.swift; sourceTree = "<group>"; };
+		DEFDC1F52FB9A3FE00E9B9B8 /* CacheStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStatus.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -83,10 +92,11 @@
 		DE7EF77F2FA624DB00F20E35 = {
 			isa = PBXGroup;
 			children = (
+				DE7EF78A2FA624DB00F20E35 /* DevSignal */,
+				DEFDC1F02FB9A35B00E9B9B8 /* tests */,
 				DE7EF8192FAA34F800F20E35 /* Settings */,
 				DE7EF8172FAA34B700F20E35 /* Onboarding */,
 				DE7EF7F32FA639E100F20E35 /* Models */,
-				DE7EF78A2FA624DB00F20E35 /* DevSignal */,
 				DE7EF7BC2FA6262600F20E35 /* Features */,
 				DE7EF7962FA624EC00F20E35 /* Core */,
 				DE7EF7A32FA625BD00F20E35 /* Shared */,
@@ -105,6 +115,8 @@
 		DE7EF7962FA624EC00F20E35 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				DEFDC1F22FB9A38B00E9B9B8 /* Cache */,
+				DE1167D62FB8D9A100B27FFA /* AsyncSemaphore.swift */,
 				DE7EF8152FAA343A00F20E35 /* KeychainManager.swift */,
 				DE7EF7972FA6250900F20E35 /* AppEnvironment.swift */,
 				DE7EF7F72FA63A7400F20E35 /* Networking */,
@@ -146,6 +158,7 @@
 		DE7EF7F72FA63A7400F20E35 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				DEFDC1EE2FB99FE300E9B9B8 /* APIClientProtocol.swift */,
 				DE7EF7FA2FA63A9700F20E35 /* APIClient.swift */,
 				DE7EF7F82FA63A8200F20E35 /* APIError.swift */,
 			);
@@ -166,6 +179,23 @@
 				DE7EF81A2FAA350200F20E35 /* SettingsView.swift */,
 			);
 			path = Settings;
+			sourceTree = "<group>";
+		};
+		DEFDC1F02FB9A35B00E9B9B8 /* tests */ = {
+			isa = PBXGroup;
+			children = (
+				DEFDC1F12FB9A36400E9B9B8 /* MockAPIClient.swift */,
+			);
+			path = tests;
+			sourceTree = "<group>";
+		};
+		DEFDC1F22FB9A38B00E9B9B8 /* Cache */ = {
+			isa = PBXGroup;
+			children = (
+				DEFDC1F52FB9A3FE00E9B9B8 /* CacheStatus.swift */,
+				DEFDC1F32FB9A39900E9B9B8 /* JobCache.swift */,
+			);
+			path = Cache;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -202,7 +232,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2640;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					DE7EF7872FA624DB00F20E35 = {
 						CreatedOnToolsVersion = 26.4.1;
@@ -245,7 +275,9 @@
 			files = (
 				DE7EF80B2FA7E81B00F20E35 /* OutreachMessage.swift in Sources */,
 				DE7EF7C62FA62E5600F20E35 /* AppEnvironment.swift in Sources */,
+				DE1167D72FB8D9A300B27FFA /* AsyncSemaphore.swift in Sources */,
 				DE7EF7FB2FA63A9800F20E35 /* APIClient.swift in Sources */,
+				DEFDC1F62FB9A3FF00E9B9B8 /* CacheStatus.swift in Sources */,
 				DE7EF8162FAA343B00F20E35 /* KeychainManager.swift in Sources */,
 				DE7EF8072FA6421000F20E35 /* ScoreBadge.swift in Sources */,
 				DE7EF8052FA641C500F20E35 /* JobPage.swift in Sources */,
@@ -257,7 +289,9 @@
 				DE7EF7F92FA63A8300F20E35 /* APIError.swift in Sources */,
 				DE7EF8062FA641CD00F20E35 /* Job.swift in Sources */,
 				DE7EF8252FACA0F200F20E35 /* RunPipelineResponse.swift in Sources */,
+				DEFDC1EF2FB99FE500E9B9B8 /* APIClientProtocol.swift in Sources */,
 				DE7EF81E2FAA3F4D00F20E35 /* SettingsView.swift in Sources */,
+				DEFDC1F42FB9A39B00E9B9B8 /* JobCache.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -323,6 +357,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -380,6 +415,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
