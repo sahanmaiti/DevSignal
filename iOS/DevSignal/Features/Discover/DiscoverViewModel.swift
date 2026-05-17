@@ -22,62 +22,73 @@ import Combine
 
 @MainActor
 final class DiscoverViewModel: ObservableObject {
-    
-    // ── Published state — views watch these ───────────────────────────────
-    
+
     @Published var jobs: [Job] = []
     @Published var isLoading = false
-    @Published var isLoadingMore = false   // for pagination — loading page 2+
+    @Published var isLoadingMore = false
     @Published var errorMessage: String? = nil
     @Published var hasMore = false
     @Published var totalCount = 0
-    
-    // ── Filter state ──────────────────────────────────────────────────────
-    // These control what the API query returns.
-    // When the user changes a filter, we reset and reload.
-    
+    @Published var cacheStatus: CacheStatus = .live  // ← new
+
     @Published var minScore: Int = 0
     @Published var remoteOnly: Bool = false
     @Published var visaOnly: Bool = false
     @Published var daysFresh: Int = 30
-    
-    // ── Private state ─────────────────────────────────────────────────────
-    
+
     private var currentPage = 1
-    private let api = APIClient.shared
-    
-    // ── Initial load ──────────────────────────────────────────────────────
-    // Called when the Discover tab appears for the first time.
-    
+    private let api: any APIClientProtocol
+    private let cache: JobCache
+
+    init(api: (any APIClientProtocol)? = nil) {
+        self.api = api ?? APIClient.shared
+        self.cache = JobCache.shared
+    }
+
     func loadJobs() async {
-        // Don't start a new load if one is already running
         guard !isLoading else { return }
-        
         currentPage = 1
-        isLoading = true
+        isLoading   = true
         errorMessage = nil
-        
+
         do {
             let page = try await api.fetchJobs(
-                minScore: minScore,
-                remote: remoteOnly ? true : nil,
-                visa: visaOnly ? true : nil,
+                minScore:  minScore,
+                remote:    remoteOnly ? true : nil,
+                visa:      visaOnly   ? true : nil,
+                source:    nil,
                 daysFresh: daysFresh,
-                page: 1,
-                perPage: 25
+                page:      1,
+                perPage:   25
             )
-            
-            // Replace the list with fresh results
-            jobs = page.jobs
-            hasMore = page.hasMore
+            jobs       = page.jobs
+            hasMore    = page.hasMore
             totalCount = page.total
-            
+            cacheStatus = .live
+
+            // Write successful response to offline cache
+            cache.save(jobs: page.jobs)
+
+        } catch APIError.networkUnavailable, APIError.cancelled {
+            // Server unreachable — serve cached data
+            let (cached, isStale) = cache.loadJobs(minScore: minScore)
+            if !cached.isEmpty {
+                jobs        = cached
+                totalCount  = cached.count
+                hasMore     = false
+                cacheStatus = isStale
+                    ? .stale(Date())
+                    : .cached(Date())
+                errorMessage = nil   // suppress the error — we have data
+            } else {
+                errorMessage = "No internet connection and no cached data available."
+            }
         } catch let apiError as APIError {
             errorMessage = apiError.errorDescription
         } catch {
             errorMessage = error.localizedDescription
         }
-        
+
         isLoading = false
     }
     
@@ -94,6 +105,7 @@ final class DiscoverViewModel: ObservableObject {
                 minScore: minScore,
                 remote: remoteOnly ? true : nil,
                 visa: visaOnly ? true : nil,
+                source: nil,
                 daysFresh: daysFresh,
                 page: currentPage,
                 perPage: 25
@@ -124,6 +136,7 @@ final class DiscoverViewModel: ObservableObject {
                 minScore: minScore,
                 remote: remoteOnly ? true : nil,
                 visa: visaOnly ? true : nil,
+                source: nil,
                 daysFresh: daysFresh,
                 page: 1,
                 perPage: 25
