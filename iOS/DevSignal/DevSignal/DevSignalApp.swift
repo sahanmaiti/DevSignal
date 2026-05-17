@@ -8,6 +8,7 @@
 // isConfigured becomes true and SwiftUI automatically shows MainTabView.
 
 import SwiftUI
+import SwiftData
 
 @main
 struct DevSignalApp: App {
@@ -17,6 +18,11 @@ struct DevSignalApp: App {
         WindowGroup {
             AppRouter()
                 .environment(environment)
+                .modelContainer(
+                    try! ModelContainer(
+                        for: CachedJob.self, CachedStats.self
+                    )
+                )
         }
     }
 }
