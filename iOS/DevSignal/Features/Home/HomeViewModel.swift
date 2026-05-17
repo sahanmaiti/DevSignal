@@ -17,23 +17,45 @@ final class HomeViewModel: ObservableObject {
     @Published var isRunningPipeline = false
     @Published var pipelineStatusMessage: String? = nil
     
-    private let api = APIClient.shared
+    private let api: any APIClientProtocol
+
+    init(api: (any APIClientProtocol)? = nil) {
+        self.api = api ?? APIClient.shared
+    }
     
     func load(force: Bool = false) async {
         guard !isLoading || force else { return }
         isLoading = true
         errorMessage = nil
-        
-        // Run both requests at the same time using async let.
-        // async let starts two tasks simultaneously — faster than awaiting one by one.
-        // Think of it like asyncio.gather() in Python.
-        async let statsResult = api.fetchStats()
-        async let jobsResult  = api.fetchJobs(minScore: 45, daysFresh: 30, perPage: 5)
-        
+
         do {
-            // Both results are awaited here — we wait for whichever finishes last
+            async let statsResult = api.fetchStats()
+            async let jobsResult = api.fetchJobs(
+                minScore:  45,
+                remote:    nil,
+                visa:      nil,
+                source:    nil,
+                daysFresh: 30,
+                page:      1,
+                perPage:   5
+            )
+
             stats   = try await statsResult
             topJobs = try await jobsResult.jobs
+
+            // Write to cache on success
+            if let stats { JobCache.shared.saveStats(stats) }
+            JobCache.shared.save(jobs: topJobs)
+
+        } catch APIError.networkUnavailable {
+            // Serve cached data silently
+            let (cachedStats, _) = JobCache.shared.loadStats()
+            let (cachedJobs, _)  = JobCache.shared.loadJobs(minScore: 45, limit: 5)
+            stats   = cachedStats
+            topJobs = cachedJobs
+            if cachedStats == nil {
+                errorMessage = "No internet connection."
+            }
         } catch let apiError as APIError {
             errorMessage = apiError.errorDescription
         } catch {
@@ -42,37 +64,37 @@ final class HomeViewModel: ObservableObject {
 
         isLoading = false
     }
-
+    
     func runPipelineAndWatch() async {
         guard !isRunningPipeline else { return }
         isRunningPipeline = true
         pipelineStatusMessage = nil
         errorMessage = nil
-
+        
         let previousLastRun = stats?.pipelineLastRun
-
+        
         do {
             let resp = try await api.runPipeline()
             pipelineStatusMessage = resp.message
-
-            // Poll stats for completion (keep it bounded so we don't hang forever).
-            // This is intentionally lightweight: if it doesn't finish soon,
-            // the user can continue using the app and refresh later.
-            for _ in 0..<24 { // ~2 minutes at 5s intervals
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            
+            for _ in 0..<24 {
+                try await Task.sleep(nanoseconds: 5_000_000_000) // cancellable
                 let latest = try await api.fetchStats()
                 stats = latest
-                if latest.pipelineLastRun != nil && latest.pipelineLastRun != previousLastRun {
+                if latest.pipelineLastRun != nil,
+                   latest.pipelineLastRun != previousLastRun {
                     pipelineStatusMessage = "Pipeline finished. Data updated."
                     break
                 }
             }
+        } catch is CancellationError {
+            // Task was cancelled (user navigated away) — clean up silently
         } catch let apiError as APIError {
             errorMessage = apiError.errorDescription
         } catch {
             errorMessage = error.localizedDescription
         }
-
+        
         isRunningPipeline = false
     }
 }
