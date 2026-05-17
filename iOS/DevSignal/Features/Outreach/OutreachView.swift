@@ -166,7 +166,7 @@ struct OutreachCard: View {
             }
         } label: {
             HStack(spacing: 12) {
-                CompanyAvatar(company: item.job.company ?? "Unknown Company")
+                DiscoverView.CompanyAvatar(company: item.job.company ?? "Unknown Company")
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(item.job.displayTitle)

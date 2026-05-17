@@ -174,7 +174,7 @@ struct HomeView: View {
             } else {
                 ForEach(viewModel.topJobs) { job in
                     NavigationLink(destination: JobDetailView(job: job)) {
-                        JobRow(job: job)
+                        DiscoverView.JobRow(job: job)
                     }
                     .buttonStyle(.plain)
                 }

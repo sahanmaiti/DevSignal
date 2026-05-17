@@ -67,7 +67,7 @@ struct JobDetailView: View {
 
     private var headerSection: some View {
         HStack(spacing: 16) {
-            CompanyAvatar(company: job.company ?? "Unknown Company")
+            DiscoverView.CompanyAvatar(company: job.company ?? "Unknown Company")
                 .scaleEffect(1.4)
                 .frame(width: 64, height: 64)
 
@@ -82,12 +82,12 @@ struct JobDetailView: View {
 
                 HStack(spacing: 6) {
                     if job.isRemote == true {
-                        PillBadge(text: "Remote", color: .green)
+                        DiscoverView.PillBadge(text: "Remote", color: .green)
                     }
                     if job.visaSponsorship == true {
-                        PillBadge(text: "Visa", color: .blue)
+                        DiscoverView.PillBadge(text: "Visa", color: .blue)
                     }
-                    PillBadge(text: job.sourceDisplay, color: .indigo)
+                    DiscoverView.PillBadge(text: job.sourceDisplay, color: .indigo)
                 }
             }
 
@@ -371,7 +371,7 @@ struct OutreachDetailSheet: View {
 
                     // ── Job header ────────────────────────────────────────
                     HStack(spacing: 12) {
-                        CompanyAvatar(company: job.company ?? "Unknown Company")
+                        DiscoverView.CompanyAvatar(company: job.company ?? "Unknown Company")
                         VStack(alignment: .leading, spacing: 3) {
                             Text(job.displayTitle)
                                 .font(.subheadline)
