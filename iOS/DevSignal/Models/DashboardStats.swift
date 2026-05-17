@@ -5,7 +5,7 @@ import Foundation
 // Using Decodable instead of Codable avoids requiring Encodable conformance,
 // which breaks when a nested type has a custom init(from:) decoder.
 
-struct DashboardStats: Decodable {
+struct DashboardStats: Codable {
     let totalJobs: Int
     let avgScore: Double
     let jobsAbove70: Int
@@ -68,13 +68,13 @@ struct DashboardStats: Decodable {
     }
 }
 
-struct ScoreBucket: Decodable, Identifiable {
+struct ScoreBucket: Codable, Identifiable {
     let range: String
     let count: Int
     var id: String { range }
 }
 
-struct SourceStat: Decodable, Identifiable {
+struct SourceStat: Codable, Identifiable {
     let source: String
     let avgScore: Double
     let count: Int
@@ -100,5 +100,12 @@ struct SourceStat: Decodable, Identifiable {
 
         avgScore = try c.decode(Double.self, forKey: .avgScore)
         count    = try c.decode(Int.self,    forKey: .count)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(source, forKey: .source)
+        try container.encode(avgScore, forKey: .avgScore)
+        try container.encode(count, forKey: .count)
     }
 }
