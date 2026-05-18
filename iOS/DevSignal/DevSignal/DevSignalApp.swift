@@ -1,14 +1,4 @@
-// PURPOSE:
-//   App entry point. Checks if credentials exist in Keychain.
-//   If yes → show main TabView.
-//   If no  → show OnboardingView.
-//
-// The switch between onboarding and main app is driven by
-// AppEnvironment.isConfigured. When onboarding saves credentials,
-// isConfigured becomes true and SwiftUI automatically shows MainTabView.
-
 import SwiftUI
-import SwiftData
 
 @main
 struct DevSignalApp: App {
@@ -18,14 +8,10 @@ struct DevSignalApp: App {
         WindowGroup {
             AppRouter()
                 .environment(environment)
-                .modelContainer(
-                    try! ModelContainer(
-                        for: CachedJob.self, CachedStats.self
-                    )
-                )
         }
     }
 }
+
 
 struct AppRouter: View {
     @Environment(AppEnvironment.self) private var env
