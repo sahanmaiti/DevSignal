@@ -36,9 +36,6 @@ from storage.cache import cache
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LIMITER
-#
-# get_remote_address reads X-Forwarded-For first, then falls back to the
-# direct connection IP — correct behind any reverse proxy / CDN.
 # ─────────────────────────────────────────────────────────────────────────────
 
 limiter = Limiter(key_func=get_remote_address)
@@ -308,6 +305,92 @@ async def get_jobs(
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX: /jobs/outreach MUST be registered BEFORE /jobs/{job_id}.
+#
+# FastAPI matches routes top-to-bottom. If /{job_id} comes first,
+# the literal path "/jobs/outreach" is captured with job_id="outreach",
+# the DB tries int("outreach"), throws, and the client gets a 500.
+# Moving this block above /{job_id} makes FastAPI prefer the exact
+# literal match and never reach the path-parameter route.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/jobs/outreach", tags=["jobs"])
+@limiter.limit("20/minute")
+async def get_outreach_batch(
+    request: Request,
+    ids: str = Query(
+        ...,
+        description="Comma-separated job IDs, e.g. 1,2,3,4,5",
+        example="1,2,3",
+    ),
+):
+    """
+    Batch outreach fetch.
+
+    Replaces N individual GET /jobs/{id}/outreach calls with one request.
+    Returns a dict keyed by job_id string for easy iOS-side lookup.
+
+    Limits:
+    - Maximum 50 IDs per request (prevents accidental full-table scan)
+    - Only returns jobs that exist and have outreach content
+    """
+    try:
+        raw_ids = [i.strip() for i in ids.split(",") if i.strip()]
+        if not raw_ids:
+            raise ValueError("Empty id list")
+        if len(raw_ids) > 50:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum 50 IDs per batch request.",
+            )
+        job_ids = [int(i) for i in raw_ids]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid ids parameter: {e}. Expected comma-separated integers.",
+        )
+
+    async def fetch_one(job_id: int) -> tuple[int, dict | None]:
+        try:
+            job = await async_db.get_job_by_id(job_id)
+            return job_id, job
+        except Exception:
+            return job_id, None
+
+    job_results = await asyncio.gather(
+        *[fetch_one(jid) for jid in job_ids],
+        return_exceptions=False,
+    )
+
+    response: dict[str, dict] = {}
+    for job_id, job in job_results:
+        if job is None:
+            continue
+
+        message   = job.get("outreach_message", "").strip()
+        recruiter = job.get("recruiter_name", "").strip()
+        email     = job.get("email", "").strip()
+        linkedin  = job.get("linkedin_profile", "").strip()
+
+        if not any([message, recruiter, email, linkedin]):
+            continue
+
+        response[str(job_id)] = {
+            "job_id":          str(job_id),
+            "message":         message or None,
+            "recruiter_name":  recruiter or None,
+            "recruiter_email": email or None,
+            "linkedin_url":    linkedin or None,
+        }
+
+    return response
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /jobs/{job_id}  — must come AFTER the literal /jobs/outreach route above
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.get("/jobs/{job_id}", tags=["jobs"])
 @limiter.limit("60/minute")
 async def get_job(request: Request, job_id: str):
@@ -457,26 +540,66 @@ async def get_stats(request: Request):
     # ── Cache miss — query Postgres ───────────────────────────────────────
     try:
         stats = await async_db.get_dashboard_stats()
+
+        # FIX: psycopg2 returns ROUND(AVG(...)) as Python Decimal, which
+        # FastAPI's JSON encoder serializes as a string "62.3" instead of
+        # the number 62.3. Swift's Codable then fails with typeMismatch
+        # (expected Double, found String). Casting to float/int here ensures
+        # the JSON wire format always contains native JSON numbers.
+        def safe_float(val, default: float = 0.0) -> float:
+            try:
+                return float(val) if val is not None else default
+            except (TypeError, ValueError):
+                return default
+
+        def safe_int(val, default: int = 0) -> int:
+            try:
+                return int(val) if val is not None else default
+            except (TypeError, ValueError):
+                return default
+
+        # Normalise score_distribution — each bucket's count must be int
+        raw_dist = stats.get("score_distribution", [])
+        score_distribution = [
+            {
+                "range": str(bucket.get("range", "")),
+                "count": safe_int(bucket.get("count", 0)),
+            }
+            for bucket in raw_dist
+        ]
+
+        # Normalise top_sources — avg_score must be float, count must be int
+        raw_sources = stats.get("top_sources", [])
+        top_sources = [
+            {
+                "source":    str(src.get("source") or src.get("job_source", "")),
+                "avg_score": safe_float(src.get("avg_score", 0.0)),
+                "count":     safe_int(src.get("count", 0)),
+            }
+            for src in raw_sources
+        ]
+
         response = {
-            "total_jobs":         stats.get("total_jobs", 0),
-            "avg_score":          round(stats.get("avg_score", 0.0), 1),
-            "jobs_above_70":      stats.get("jobs_above_70", 0),
-            "applied_count":      stats.get("applied_count", 0),
-            "reply_rate":         round(stats.get("reply_rate", 0.0), 2),
-            "interview_count":    stats.get("interview_count", 0),
+            "total_jobs":         safe_int(stats.get("total_jobs", 0)),
+            "avg_score":          safe_float(stats.get("avg_score", 0.0)),
+            "jobs_above_70":      safe_int(stats.get("jobs_above_70", 0)),
+            "applied_count":      safe_int(stats.get("applied_count", 0)),
+            "reply_rate":         round(safe_float(stats.get("reply_rate", 0.0)), 2),
+            "interview_count":    safe_int(stats.get("interview_count", 0)),
             "pipeline_last_run":  stats["pipeline_last_run"].isoformat()
-                                if stats.get("pipeline_last_run") else None,
-            "score_distribution": stats.get("score_distribution", []),
-            "top_sources":        stats.get("top_sources", []),
+                                  if stats.get("pipeline_last_run") else None,
+            "score_distribution": score_distribution,
+            "top_sources":        top_sources,
         }
 
-        # Store in Redis — fire and forget (don't await failure)
+        # Store in Redis — fire and forget (don't block on failure)
         await cache.set(STATS_CACHE_KEY, response, ttl=STATS_TTL)
 
         return response
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVICES
@@ -547,9 +670,9 @@ async def run_pipeline(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {e}")
 
+
 @app.get("/pipeline/status/{job_id}", tags=["pipeline"])
 async def pipeline_status(job_id: str):
-    # No rate limit — cheap Redis read, no side effects
     global _arq_pool
     if _arq_pool is None:
         raise HTTPException(
@@ -570,82 +693,3 @@ async def pipeline_status(job_id: str):
         return {"job_id": job_id, "status": jstatus.value, "result": result}
     except Exception as exc:
         return {"job_id": job_id, "status": "unknown", "error": str(exc)}
-    
-
-
-@app.get("/jobs/outreach", tags=["jobs"])
-@limiter.limit("20/minute")
-async def get_outreach_batch(
-    request: Request,
-    ids: str = Query(
-        ...,
-        description="Comma-separated job IDs, e.g. 1,2,3,4,5",
-        example="1,2,3",
-    ),
-):
-    """
-    Batch outreach fetch.
-
-    Replaces N individual GET /jobs/{id}/outreach calls with one request.
-    Returns a dict keyed by job_id string for easy iOS-side lookup.
-
-    Limits:
-    - Maximum 50 IDs per request (prevents accidental full-table scan)
-    - Only returns jobs that exist and have outreach content
-    """
-    # Parse and validate the id list
-    try:
-        raw_ids = [i.strip() for i in ids.split(",") if i.strip()]
-        if not raw_ids:
-            raise ValueError("Empty id list")
-        if len(raw_ids) > 50:
-            raise HTTPException(
-                status_code=400,
-                detail="Maximum 50 IDs per batch request.",
-            )
-        job_ids = [int(i) for i in raw_ids]
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid ids parameter: {e}. Expected comma-separated integers.",
-        )
-
-    # Fetch all jobs concurrently
-    import asyncio
-
-    async def fetch_one(job_id: int) -> tuple[int, dict | None]:
-        try:
-            job = await async_db.get_job_by_id(job_id)
-            return job_id, job
-        except Exception:
-            return job_id, None
-
-    job_results = await asyncio.gather(
-        *[fetch_one(jid) for jid in job_ids],
-        return_exceptions=False,
-    )
-
-    # Build the response dict — only include jobs with actual outreach content
-    response: dict[str, dict] = {}
-    for job_id, job in job_results:
-        if job is None:
-            continue
-
-        message  = job.get("outreach_message", "").strip()
-        recruiter = job.get("recruiter_name", "").strip()
-        email    = job.get("email", "").strip()
-        linkedin = job.get("linkedin_profile", "").strip()
-
-        # Skip jobs with no outreach content at all
-        if not any([message, recruiter, email, linkedin]):
-            continue
-
-        response[str(job_id)] = {
-            "job_id":          str(job_id),
-            "message":         message or None,
-            "recruiter_name":  recruiter or None,
-            "recruiter_email": email or None,
-            "linkedin_url":    linkedin or None,
-        }
-
-    return response
