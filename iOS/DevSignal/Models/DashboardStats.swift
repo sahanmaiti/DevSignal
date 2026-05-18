@@ -79,33 +79,43 @@ struct SourceStat: Codable, Identifiable {
     let avgScore: Double
     let count: Int
     var id: String { source }
-
+    
     enum CodingKeys: String, CodingKey {
         case source
         case jobSource = "job_source"
         case avgScore  = "avg_score"
         case count
     }
-
+    
     // Custom decoder: handles both "source" (jobs table alias)
     // and "job_source" (opportunities table real column name)
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-
+        
+        // Handle both "source" and "job_source" column names
         if let s = try? c.decode(String.self, forKey: .source) {
             source = s
         } else {
             source = try c.decode(String.self, forKey: .jobSource)
         }
-
-        avgScore = try c.decode(Double.self, forKey: .avgScore)
-        count    = try c.decode(Int.self,    forKey: .count)
+        
+        // Handle avg_score as Double OR String (backend may send Decimal as "62.3")
+        if let d = try? c.decode(Double.self, forKey: .avgScore) {
+            avgScore = d
+        } else if let s = try? c.decode(String.self, forKey: .avgScore),
+                  let d = Double(s) {
+            avgScore = d
+        } else {
+            avgScore = 0.0
+        }
+        
+        count = try c.decode(Int.self, forKey: .count)
     }
 
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(source, forKey: .source)
-        try container.encode(avgScore, forKey: .avgScore)
-        try container.encode(count, forKey: .count)
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(source, forKey: .source)
+        try c.encode(avgScore, forKey: .avgScore)
+        try c.encode(count, forKey: .count)
     }
 }
