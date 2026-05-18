@@ -140,7 +140,7 @@ class DBClient:
                 return inserted if inserted > 0 else len(rows)
 
     def update_score(self, job_id: int, score: int,
-                     breakdown: dict, outreach_message: str) -> None:
+                    breakdown: dict, outreach_message: str) -> None:
         sql = """
             UPDATE jobs
             SET opportunity_score = %s,
@@ -158,8 +158,8 @@ class DBClient:
                 ))
 
     def update_recruiter(self, job_id: int, recruiter_name: str,
-                         recruiter_role: str, linkedin_profile: str,
-                         email: str) -> None:
+                        recruiter_role: str, linkedin_profile: str,
+                        email: str) -> None:
         sql = """
             UPDATE jobs
             SET recruiter_name   = %s,
@@ -204,8 +204,8 @@ class DBClient:
                 cur.execute(sql, params)
 
     def update_application_legacy(self, job_id: int, applied: bool,
-                                   response_status: str = "",
-                                   interview_stage: str = "") -> None:
+                                response_status: str = "",
+                                interview_stage: str = "") -> None:
         """
         Updates application tracking columns on the jobs table directly.
         Used by the Streamlit dashboard.
@@ -246,7 +246,7 @@ class DBClient:
                 return [dict(row) for row in cur.fetchall()]
 
     def get_top_opportunities(self, min_score: int = 45,
-                              limit: int = 5) -> list:
+                            limit: int = 5) -> list:
         """Returns top N scoring jobs from the last 12 hours for the Telegram digest."""
         sql = """
             SELECT
@@ -267,8 +267,8 @@ class DBClient:
                 return [dict(row) for row in cur.fetchall()]
 
     def get_all_opportunities(self, min_score: int = 0,
-                              remote_only: bool = False,
-                              unapplied_only: bool = False) -> list:
+                            remote_only: bool = False,
+                            unapplied_only: bool = False) -> list:
         """Returns jobs with optional filters. Used by the Streamlit dashboard."""
         conditions = []
         params = []
@@ -337,8 +337,8 @@ class DBClient:
                 return run_id
 
     def finish_scrape_run(self, run_id: int, jobs_found: int,
-                          jobs_new: int, jobs_scored: int = 0,
-                          errors: str = "") -> None:
+                        jobs_new: int, jobs_scored: int = 0,
+                        errors: str = "") -> None:
         sql = """
             UPDATE scrape_runs
             SET finished_at = NOW(),
@@ -352,26 +352,26 @@ class DBClient:
             with conn.cursor() as cur:
                 cur.execute(sql, (jobs_found, jobs_new, jobs_scored, errors, run_id))
                 print(f"[DB] Scrape run #{run_id} finished — "
-                      f"{jobs_found} found, {jobs_new} new")
+                    f"{jobs_found} found, {jobs_new} new")
 
     # ─────────────────────────────────────────────────────────────────────
     # WATCHLIST
     # ─────────────────────────────────────────────────────────────────────
 
     def add_to_watchlist(self, company: str, ios_product_desc: str = "",
-                         company_url: str = "", linkedin_url: str = "",
-                         funding_stage: str = "", notes: str = "") -> None:
+                        company_url: str = "", linkedin_url: str = "",
+                        funding_stage: str = "", notes: str = "") -> None:
         sql = """
             INSERT INTO companies_watchlist
                 (company, ios_product_desc, company_url,
-                 linkedin_url, funding_stage, notes)
+                linkedin_url, funding_stage, notes)
             VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (company) DO NOTHING
         """
         with self.get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (company, ios_product_desc, company_url,
-                                  linkedin_url, funding_stage, notes))
+                                linkedin_url, funding_stage, notes))
 
     def get_watchlist(self) -> list:
         sql = "SELECT * FROM companies_watchlist ORDER BY added_at DESC"
@@ -387,7 +387,7 @@ class DBClient:
     # ─────────────────────────────────────────────────────────────────────
 
     def get_jobs_filtered(self, filters: dict,
-                          limit: int = 26, offset: int = 0) -> list:
+                    limit: int = 26, offset: int = 0) -> list:
         with self.get_conn() as conn:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -519,8 +519,8 @@ class DBClient:
             return [dict(row) for row in cursor.fetchall()]
 
     def update_application(self, application_id: str,
-                           stage: str | None,
-                           notes: str | None) -> dict | None:
+                        stage: str | None,
+                        notes: str | None) -> dict | None:
         """Partial-update an application (stage and/or notes)."""
         with self.get_conn() as conn:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -595,7 +595,7 @@ class DBClient:
             cursor.execute("""
                 SELECT
                     CONCAT(FLOOR(opportunity_score/10)*10, '-',
-                           FLOOR(opportunity_score/10)*10+9) AS range,
+                        FLOOR(opportunity_score/10)*10+9) AS range,
                     COUNT(*) AS count
                 FROM jobs
                 WHERE opportunity_score IS NOT NULL
@@ -616,7 +616,14 @@ class DBClient:
                 ORDER BY avg_score DESC
                 LIMIT 10
             """)
-            top_sources = [dict(r) for r in cursor.fetchall()]
+            top_sources = [
+                {
+                    "source":    r["source"],
+                    "avg_score": float(r["avg_score"]) if r["avg_score"] is not None else 0.0,
+                    "count":     int(r["count"]),
+                }
+                for r in cursor.fetchall()
+            ]
 
             # ── Last pipeline run ─────────────────────────────────────────
             cursor.execute("""
