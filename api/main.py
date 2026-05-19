@@ -289,7 +289,7 @@ async def get_jobs(
         offset = (page - 1) * per_page
         jobs_raw = await async_db.get_jobs_filtered(filters, limit=per_page + 1, offset=offset)
         total    = await async_db.count_jobs_filtered(filters)
-        
+
         has_more  = len(jobs_raw) > per_page
         jobs_page = jobs_raw[:per_page]
 
@@ -621,7 +621,7 @@ async def register_device(request: Request, body: DeviceRegistrationRequest):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/run-pipeline", tags=["pipeline"])
-@limiter.limit("1/10minute")
+@limiter.limit("3/minute")   
 async def run_pipeline(request: Request):
     global _arq_pool
 
