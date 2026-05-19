@@ -663,5 +663,5 @@ class DBClient:
 # db_client  — used by api/main.py (iOS API layer)
 # db         — legacy alias — keeps all existing scraper imports working
 # ─────────────────────────────────────────────────────────────────────────────
-db_client = DBClient()
+db_client = DBClient(min_connections=2, max_connections=10)  
 db = db_client
