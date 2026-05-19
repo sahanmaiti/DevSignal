@@ -287,10 +287,9 @@ async def get_jobs(
         if applied is not None: filters["exclude_applied"]  = not applied
 
         offset = (page - 1) * per_page
-        jobs_raw, total = await asyncio.gather(
-            async_db.get_jobs_filtered(filters, limit=per_page + 1, offset=offset),
-            async_db.count_jobs_filtered(filters),
-        )
+        jobs_raw = await async_db.get_jobs_filtered(filters, limit=per_page + 1, offset=offset)
+        total    = await async_db.count_jobs_filtered(filters)
+        
         has_more  = len(jobs_raw) > per_page
         jobs_page = jobs_raw[:per_page]
 
