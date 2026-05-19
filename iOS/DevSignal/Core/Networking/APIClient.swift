@@ -93,6 +93,7 @@ final class APIClient: APIClientProtocol {
         case 200...299: break
         case 401: throw APIError.unauthorized
         case 404: throw APIError.notFound
+        case 429: throw APIError.rateLimited
         case 500...599: throw APIError.serverError(httpResponse.statusCode)
         default: throw APIError.unknown("HTTP \(httpResponse.statusCode)")
         }
@@ -157,6 +158,8 @@ final class APIClient: APIClientProtocol {
             throw APIError.unauthorized
         case 404:
             throw APIError.notFound
+        case 429:
+            throw APIError.rateLimited
         case 500...599:
             throw APIError.serverError(httpResponse.statusCode)
         default:
@@ -203,6 +206,7 @@ final class APIClient: APIClientProtocol {
         case 200...299: return true
         case 401: throw APIError.unauthorized
         case 404: throw APIError.notFound
+        case 429: throw APIError.rateLimited
         case 500...599: throw APIError.serverError(httpResponse.statusCode)
         default: throw APIError.unknown("HTTP \(httpResponse.statusCode)")
         }
