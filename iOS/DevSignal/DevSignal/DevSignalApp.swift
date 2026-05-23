@@ -6,26 +6,10 @@ struct DevSignalApp: App {
 
     var body: some Scene {
         WindowGroup {
-            AppRouter()
+            // Go straight to the main app — no onboarding screen.
+            MainTabView()
                 .environment(environment)
+                .preferredColorScheme(.light)
         }
-    }
-}
-
-
-struct AppRouter: View {
-    @Environment(AppEnvironment.self) private var env
-
-    var body: some View {
-        Group {
-            if env.isConfigured {
-                MainTabView()
-                    .transition(.opacity)
-            } else {
-                OnboardingView()
-                    .transition(.opacity)
-            }
-        }
-        .preferredColorScheme(.light)
     }
 }

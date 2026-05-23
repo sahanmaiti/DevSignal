@@ -23,6 +23,7 @@
 		DE7EF8212FAA40BC00F20E35 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8202FAA40A300F20E35 /* OnboardingView.swift */; };
 		DE7EF8232FAA444B00F20E35 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8222FAA444B00F20E35 /* AppTheme.swift */; };
 		DE7EF8252FACA0F200F20E35 /* RunPipelineResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7EF8242FACA0F200F20E35 /* RunPipelineResponse.swift */; };
+		DEAD834B2FC18529005A3F3E /* AppConfig.swift.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEAD834A2FC18528005A3F3E /* AppConfig.swift.swift */; };
 		DEFDC1EF2FB99FE500E9B9B8 /* APIClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFDC1EE2FB99FE300E9B9B8 /* APIClientProtocol.swift */; };
 		DEFDC1F42FB9A39B00E9B9B8 /* JobCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFDC1F32FB9A39900E9B9B8 /* JobCache.swift */; };
 		DEFDC1F62FB9A3FF00E9B9B8 /* CacheStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFDC1F52FB9A3FE00E9B9B8 /* CacheStatus.swift */; };
@@ -46,6 +47,7 @@
 		DE7EF8202FAA40A300F20E35 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		DE7EF8222FAA444B00F20E35 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		DE7EF8242FACA0F200F20E35 /* RunPipelineResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPipelineResponse.swift; sourceTree = "<group>"; };
+		DEAD834A2FC18528005A3F3E /* AppConfig.swift.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift.swift; sourceTree = "<group>"; };
 		DEFDC1EE2FB99FE300E9B9B8 /* APIClientProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientProtocol.swift; sourceTree = "<group>"; };
 		DEFDC1F12FB9A36400E9B9B8 /* MockAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAPIClient.swift; sourceTree = "<group>"; };
 		DEFDC1F32FB9A39900E9B9B8 /* JobCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobCache.swift; sourceTree = "<group>"; };
@@ -115,6 +117,7 @@
 		DE7EF7962FA624EC00F20E35 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				DEAD834A2FC18528005A3F3E /* AppConfig.swift.swift */,
 				DEFDC1F22FB9A38B00E9B9B8 /* Cache */,
 				DE1167D62FB8D9A100B27FFA /* AsyncSemaphore.swift */,
 				DE7EF8152FAA343A00F20E35 /* KeychainManager.swift */,
@@ -273,6 +276,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DEAD834B2FC18529005A3F3E /* AppConfig.swift.swift in Sources */,
 				DE7EF80B2FA7E81B00F20E35 /* OutreachMessage.swift in Sources */,
 				DE7EF7C62FA62E5600F20E35 /* AppEnvironment.swift in Sources */,
 				DE1167D72FB8D9A300B27FFA /* AsyncSemaphore.swift in Sources */,

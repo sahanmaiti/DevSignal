@@ -8,15 +8,12 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
-    @State private var showResetConfirm = false
-    @State private var showServerInfo = false
 
     var body: some View {
         NavigationStack {
             List {
                 serverSection
                 appSection
-                dangerSection
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Settings")
@@ -31,59 +28,36 @@ struct SettingsView: View {
         }
         .presentationDetents([.large])
         .presentationCornerRadius(28)
-        .confirmationDialog(
-            "Reset Connection",
-            isPresented: $showResetConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Reset and Re-connect", role: .destructive) {
-                env.clearCredentials()
-                dismiss()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove your saved credentials. You'll need to reconnect to your server.")
-        }
     }
 
     // ── Server section ────────────────────────────────────────────────────
 
     private var serverSection: some View {
-        Section("Server Connection") {
+        Section("Connection") {
             HStack {
                 Label("Status", systemImage: "circle.fill")
                     .foregroundStyle(.primary)
                 Spacer()
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(env.isConfigured ? Color.green : Color.red)
+                        .fill(Color.green)
                         .frame(width: 8, height: 8)
-                    Text(env.isConfigured ? "Connected" : "Not connected")
+                    Text("Connected")
                         .font(.subheadline)
-                        .foregroundStyle(env.isConfigured ? .green : .red)
+                        .foregroundStyle(.green)
                 }
             }
 
-            if env.isConfigured {
-                HStack {
-                    Label("Server", systemImage: "server.rack")
-                    Spacer()
-                    Text(env.baseURL)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                HStack {
-                    Label("API Key", systemImage: "key.fill")
-                    Spacer()
-                    Text("••••••••")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            HStack {
+                Label("Server", systemImage: "server.rack")
+                Spacer()
+                Text("DevSignal Cloud")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
+
 
     // ── App section ───────────────────────────────────────────────────────
 
@@ -107,22 +81,6 @@ struct SettingsView: View {
                 Label("GitHub Repository", systemImage: "chevron.left.forwardslash.chevron.right")
                     .foregroundStyle(.indigo)
             }
-        }
-    }
-
-    // ── Danger zone ───────────────────────────────────────────────────────
-
-    private var dangerSection: some View {
-        Section {
-            Button(role: .destructive) {
-                showResetConfirm = true
-            } label: {
-                Label("Reset Connection", systemImage: "trash.fill")
-            }
-        } header: {
-            Text("Danger Zone")
-        } footer: {
-            Text("Resetting will remove your saved server URL and API key from the device Keychain.")
         }
     }
 }
