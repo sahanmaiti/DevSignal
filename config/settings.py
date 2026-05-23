@@ -120,6 +120,7 @@ if APP_ENV == "production":
         "/n8n-ping",
         "/auth/register",
         "/auth/login",
+        "/devices",
     })
 else:
     PUBLIC_PATHS: frozenset[str] = frozenset({
@@ -130,6 +131,7 @@ else:
         "/redoc",
         "/auth/register",
         "/auth/login",
+        "/devices",
     })
 
 # ─────────────────────────────────────────────────────────────────────────────
