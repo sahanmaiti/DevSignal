@@ -8,12 +8,12 @@
 		<dict>
 			<key>127.0.0.1</key>
 			<dict>
-				<key>Allow Insecure HTTP Loads</key>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
 				<true/>
 			</dict>
 			<key>localhost</key>
 			<dict>
-				<key>Allow Insecure HTTP Loads</key>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
 				<true/>
 			</dict>
 		</dict>

@@ -635,11 +635,38 @@ async def run_pipeline(request: Request):
                 _job_id="pipeline_singleton",
             )
             if job is None:
-                return {
-                    "status":  "already_running",
-                    "job_id":  "pipeline_singleton",
-                    "message": "A pipeline run is already in progress.",
-                }
+                # enqueue_job returns None when arq:job: or arq:result: key
+                # already exists.  Distinguish "genuinely running" from
+                # "stale result from a previous completed run".
+                from arq.jobs import Job as ArqJob, JobStatus
+
+                prev = ArqJob(job_id="pipeline_singleton", redis=_arq_pool)
+                prev_status = await prev.status()
+
+                if prev_status in (JobStatus.queued, JobStatus.in_progress, JobStatus.deferred):
+                    return {
+                        "status":  "already_running",
+                        "job_id":  "pipeline_singleton",
+                        "message": "A pipeline run is already in progress.",
+                    }
+
+                # Previous run finished (complete / not_found) — clear the
+                # stale result so we can re-enqueue.
+                await _arq_pool.delete(b"arq:result:pipeline_singleton")
+
+                job = await _arq_pool.enqueue_job(
+                    "run_pipeline",
+                    _job_id="pipeline_singleton",
+                )
+                if job is None:
+                    # Race: another request enqueued between our delete and
+                    # re-enqueue.  Safe to report already_running.
+                    return {
+                        "status":  "already_running",
+                        "job_id":  "pipeline_singleton",
+                        "message": "A pipeline run is already in progress.",
+                    }
+
             return {
                 "status":  "queued",
                 "job_id":  job.job_id,

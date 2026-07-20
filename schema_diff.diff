@@ -1,0 +1,548 @@
+--- devsignal_test_schema.sql	2026-07-20 18:09:00
++++ devsignal_schema.sql	2026-07-20 18:09:00
+@@ -2,7 +2,7 @@
+ -- PostgreSQL database dump
+ --
+ 
+-\restrict 2Y1Wy1OItATggmoE8aN6WOnVfXScXBJcB5Y5mLkZVL173mPcfZ0pxA4iP50u9Z6
++\restrict dr3yQPcVBzpXjHV0gxM1yCLUFqr3fAdtcvKK8fGGDgbreBVNCQYgsRgs8wo9U3j
+ 
+ -- Dumped from database version 16.14
+ -- Dumped by pg_dump version 18.4 (Postgres.app)
+@@ -73,7 +73,6 @@
+     LANGUAGE plpgsql
+     AS $$
+ BEGIN
+-    -- NEW refers to the row being updated (with the new values)
+     NEW.updated_at = NOW();
+     RETURN NEW;
+ END;
+@@ -89,39 +88,40 @@
+ CREATE FUNCTION public.sync_application_to_opportunity() RETURNS trigger
+     LANGUAGE plpgsql
+     AS $$
+-        DECLARE
+-            v_response_status  TEXT;
+-            v_interview_stage  TEXT;
+-        BEGIN
+-            CASE NEW.stage
+-                WHEN 'replied'   THEN
+-                    v_response_status := 'Replied';
+-                    v_interview_stage := '';
+-                WHEN 'interview' THEN
+-                    v_response_status := 'Replied';
+-                    v_interview_stage := 'Technical';
+-                WHEN 'offer'     THEN
+-                    v_response_status := 'Replied';
+-                    v_interview_stage := 'Offer';
+-                WHEN 'rejected'  THEN
+-                    v_response_status := 'Rejected';
+-                    v_interview_stage := 'Rejected';
+-                ELSE
+-                    v_response_status := 'No response';
+-                    v_interview_stage := '';
+-            END CASE;
++DECLARE
++    v_response_status  TEXT;
++    v_interview_stage  TEXT;
++BEGIN
++    -- Derive legacy column values from the canonical stage
++    CASE NEW.stage
++        WHEN 'replied'   THEN
++            v_response_status := 'Replied';
++            v_interview_stage := '';
++        WHEN 'interview' THEN
++            v_response_status := 'Replied';
++            v_interview_stage := 'Technical';
++        WHEN 'offer'     THEN
++            v_response_status := 'Replied';
++            v_interview_stage := 'Offer';
++        WHEN 'rejected'  THEN
++            v_response_status := 'Rejected';
++            v_interview_stage := 'Rejected';
++        ELSE
++            -- applied / waiting / anything unknown
++            v_response_status := 'No response';
++            v_interview_stage := '';
++    END CASE;
+ 
+-            -- NB: table is now `jobs`, not `opportunities`
+-            UPDATE jobs
+-            SET
+-                applied          = TRUE,
+-                response_status  = v_response_status,
+-                interview_stage  = v_interview_stage
+-            WHERE id = NEW.job_id;
++    UPDATE opportunities
++    SET
++        applied          = TRUE,
++        response_status  = v_response_status,
++        interview_stage  = v_interview_stage
++    WHERE id = NEW.job_id;
+ 
+-            RETURN NEW;
+-        END;
+-        $$;
++    RETURN NEW;
++END;
++$$;
+ 
+ 
+ ALTER FUNCTION public.sync_application_to_opportunity() OWNER TO radar;
+@@ -145,17 +145,6 @@
+ SET default_tablespace = '';
+ 
+ SET default_table_access_method = heap;
+-
+---
+--- Name: alembic_version; Type: TABLE; Schema: public; Owner: radar
+---
+-
+-CREATE TABLE public.alembic_version (
+-    version_num character varying(32) NOT NULL
+-);
+-
+-
+-ALTER TABLE public.alembic_version OWNER TO radar;
+ 
+ --
+ -- Name: annotation_tag_entity; Type: TABLE; Schema: public; Owner: radar
+@@ -172,17 +161,34 @@
+ ALTER TABLE public.annotation_tag_entity OWNER TO radar;
+ 
+ --
++-- Name: api_keys; Type: TABLE; Schema: public; Owner: radar
++--
++
++CREATE TABLE public.api_keys (
++    id uuid DEFAULT gen_random_uuid() NOT NULL,
++    user_id uuid NOT NULL,
++    key_hash text NOT NULL,
++    name text DEFAULT 'default'::text NOT NULL,
++    last_used timestamp with time zone,
++    revoked boolean DEFAULT false NOT NULL,
++    created_at timestamp with time zone DEFAULT now() NOT NULL
++);
++
++
++ALTER TABLE public.api_keys OWNER TO radar;
++
++--
+ -- Name: applications; Type: TABLE; Schema: public; Owner: radar
+ --
+ 
+ CREATE TABLE public.applications (
+     id uuid DEFAULT gen_random_uuid() NOT NULL,
+     job_id integer NOT NULL,
++    user_id uuid,
+     stage text DEFAULT 'applied'::text NOT NULL,
+     applied_at timestamp with time zone DEFAULT now(),
+     notes text,
+-    updated_at timestamp with time zone DEFAULT now(),
+-    user_id uuid
++    updated_at timestamp with time zone DEFAULT now()
+ );
+ 
+ 
+@@ -260,7 +266,7 @@
+     "fileSize" integer NOT NULL,
+     "createdAt" timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
+     "updatedAt" timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
+-    CONSTRAINT "CHK_binary_data_sourceType" CHECK ((("sourceType")::text = ANY (ARRAY[('execution'::character varying)::text, ('chat_message_attachment'::character varying)::text])))
++    CONSTRAINT "CHK_binary_data_sourceType" CHECK ((("sourceType")::text = ANY ((ARRAY['execution'::character varying, 'chat_message_attachment'::character varying])::text[])))
+ );
+ 
+ 
+@@ -442,7 +448,7 @@
+     "agentId" uuid,
+     "agentName" character varying(128),
+     type character varying(16) DEFAULT 'production'::character varying NOT NULL,
+-    CONSTRAINT "CHK_chat_hub_sessions_type" CHECK (((type)::text = ANY (ARRAY[('production'::character varying)::text, ('manual'::character varying)::text])))
++    CONSTRAINT "CHK_chat_hub_sessions_type" CHECK (((type)::text = ANY ((ARRAY['production'::character varying, 'manual'::character varying])::text[])))
+ );
+ 
+ 
+@@ -639,6 +645,7 @@
+     id integer NOT NULL,
+     token text NOT NULL,
+     platform text DEFAULT 'ios'::text NOT NULL,
++    user_id uuid,
+     created_at timestamp with time zone DEFAULT now(),
+     updated_at timestamp with time zone DEFAULT now()
+ );
+@@ -819,7 +826,7 @@
+     "deletedAt" timestamp(3) with time zone,
+     "createdAt" timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
+     "storedAt" character varying(2) DEFAULT 'db'::character varying NOT NULL,
+-    CONSTRAINT "execution_entity_storedAt_check" CHECK ((("storedAt")::text = ANY (ARRAY[('db'::character varying)::text, ('fs'::character varying)::text, ('s3'::character varying)::text])))
++    CONSTRAINT "execution_entity_storedAt_check" CHECK ((("storedAt")::text = ANY ((ARRAY['db'::character varying, 'fs'::character varying, 's3'::character varying])::text[])))
+ );
+ 
+ 
+@@ -1250,9 +1257,9 @@
+     job_source character varying(50) DEFAULT ''::character varying NOT NULL,
+     apply_link text DEFAULT ''::text NOT NULL,
+     job_hash character varying(32) NOT NULL,
+-    company text DEFAULT ''::character varying NOT NULL,
+-    role text DEFAULT ''::character varying NOT NULL,
+-    location text DEFAULT ''::character varying NOT NULL,
++    company text DEFAULT ''::text NOT NULL,
++    role text DEFAULT ''::text NOT NULL,
++    location text DEFAULT ''::text NOT NULL,
+     remote character varying(10) DEFAULT 'Unknown'::character varying NOT NULL,
+     visa_sponsorship character varying(10) DEFAULT 'Unknown'::character varying NOT NULL,
+     experience_req character varying(100) DEFAULT ''::character varying NOT NULL,
+@@ -1269,17 +1276,39 @@
+     response_status character varying(20) DEFAULT ''::character varying NOT NULL,
+     interview_stage character varying(20) DEFAULT ''::character varying NOT NULL,
+     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+-    CONSTRAINT opportunities_interview_stage_check CHECK (((interview_stage)::text = ANY (ARRAY[(''::character varying)::text, ('Phone screen'::character varying)::text, ('Technical'::character varying)::text, ('Final round'::character varying)::text, ('Offer'::character varying)::text, ('Rejected'::character varying)::text]))),
+-    CONSTRAINT opportunities_opportunity_score_check CHECK (((opportunity_score IS NULL) OR ((opportunity_score >= 0) AND (opportunity_score <= 100)))),
+-    CONSTRAINT opportunities_remote_check CHECK (((remote)::text = ANY (ARRAY[('Yes'::character varying)::text, ('No'::character varying)::text, ('Hybrid'::character varying)::text, ('Unknown'::character varying)::text]))),
+-    CONSTRAINT opportunities_response_status_check CHECK (((response_status)::text = ANY (ARRAY[(''::character varying)::text, ('No response'::character varying)::text, ('Viewed'::character varying)::text, ('Replied'::character varying)::text, ('Rejected'::character varying)::text]))),
+-    CONSTRAINT opportunities_visa_sponsorship_check CHECK (((visa_sponsorship)::text = ANY (ARRAY[('Yes'::character varying)::text, ('No'::character varying)::text, ('Unknown'::character varying)::text])))
++    CONSTRAINT jobs_interview_stage_check CHECK (((interview_stage)::text = ANY ((ARRAY[''::character varying, 'Phone screen'::character varying, 'Technical'::character varying, 'Final round'::character varying, 'Offer'::character varying, 'Rejected'::character varying])::text[]))),
++    CONSTRAINT jobs_opportunity_score_check CHECK (((opportunity_score IS NULL) OR ((opportunity_score >= 0) AND (opportunity_score <= 100)))),
++    CONSTRAINT jobs_remote_check CHECK (((remote)::text = ANY ((ARRAY['Yes'::character varying, 'No'::character varying, 'Hybrid'::character varying, 'Unknown'::character varying])::text[]))),
++    CONSTRAINT jobs_response_status_check CHECK (((response_status)::text = ANY ((ARRAY[''::character varying, 'No response'::character varying, 'Viewed'::character varying, 'Replied'::character varying, 'Rejected'::character varying])::text[]))),
++    CONSTRAINT jobs_visa_sponsorship_check CHECK (((visa_sponsorship)::text = ANY ((ARRAY['Yes'::character varying, 'No'::character varying, 'Unknown'::character varying])::text[])))
+ );
+ 
+ 
+ ALTER TABLE public.jobs OWNER TO radar;
+ 
+ --
++-- Name: jobs_id_seq; Type: SEQUENCE; Schema: public; Owner: radar
++--
++
++CREATE SEQUENCE public.jobs_id_seq
++    AS integer
++    START WITH 1
++    INCREMENT BY 1
++    NO MINVALUE
++    NO MAXVALUE
++    CACHE 1;
++
++
++ALTER SEQUENCE public.jobs_id_seq OWNER TO radar;
++
++--
++-- Name: jobs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: radar
++--
++
++ALTER SEQUENCE public.jobs_id_seq OWNED BY public.jobs.id;
++
++
++--
+ -- Name: migrations; Type: TABLE; Schema: public; Owner: radar
+ --
+ 
+@@ -1472,30 +1501,8 @@
+ 
+ 
+ ALTER VIEW public.opportunities OWNER TO radar;
+-
+---
+--- Name: opportunities_id_seq; Type: SEQUENCE; Schema: public; Owner: radar
+---
+-
+-CREATE SEQUENCE public.opportunities_id_seq
+-    AS integer
+-    START WITH 1
+-    INCREMENT BY 1
+-    NO MINVALUE
+-    NO MAXVALUE
+-    CACHE 1;
+ 
+-
+-ALTER SEQUENCE public.opportunities_id_seq OWNER TO radar;
+-
+ --
+--- Name: opportunities_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: radar
+---
+-
+-ALTER SEQUENCE public.opportunities_id_seq OWNED BY public.jobs.id;
+-
+-
+---
+ -- Name: processed_data; Type: TABLE; Schema: public; Owner: radar
+ --
+ 
+@@ -1560,7 +1567,7 @@
+     "createdAt" timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
+     "updatedAt" timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
+     role character varying(128) DEFAULT 'secretsProviderConnection:user'::character varying NOT NULL,
+-    CONSTRAINT "CHK_project_secrets_provider_access_role" CHECK (((role)::text = ANY (ARRAY[('secretsProviderConnection:owner'::character varying)::text, ('secretsProviderConnection:user'::character varying)::text])))
++    CONSTRAINT "CHK_project_secrets_provider_access_role" CHECK (((role)::text = ANY ((ARRAY['secretsProviderConnection:owner'::character varying, 'secretsProviderConnection:user'::character varying])::text[])))
+ );
+ 
+ 
+@@ -1713,7 +1720,7 @@
+     jobs_scored integer DEFAULT 0 NOT NULL,
+     errors text DEFAULT ''::text NOT NULL,
+     triggered_by character varying(20) DEFAULT 'manual'::character varying NOT NULL,
+-    CONSTRAINT scrape_runs_triggered_by_check CHECK (((triggered_by)::text = ANY (ARRAY[('manual'::character varying)::text, ('n8n'::character varying)::text, ('cron'::character varying)::text])))
++    CONSTRAINT scrape_runs_triggered_by_check CHECK (((triggered_by)::text = ANY ((ARRAY['manual'::character varying, 'n8n'::character varying, 'cron'::character varying])::text[])))
+ );
+ 
+ 
+@@ -1936,7 +1943,25 @@
+ 
+ 
+ ALTER TABLE public.user_api_keys OWNER TO radar;
++
++--
++-- Name: users; Type: TABLE; Schema: public; Owner: radar
++--
++
++CREATE TABLE public.users (
++    id uuid DEFAULT gen_random_uuid() NOT NULL,
++    email text NOT NULL,
++    hashed_password text NOT NULL,
++    plan text DEFAULT 'free'::text NOT NULL,
++    is_active boolean DEFAULT true NOT NULL,
++    created_at timestamp with time zone DEFAULT now() NOT NULL,
++    updated_at timestamp with time zone DEFAULT now() NOT NULL,
++    CONSTRAINT users_plan_check CHECK ((plan = ANY (ARRAY['free'::text, 'pro'::text, 'enterprise'::text])))
++);
++
+ 
++ALTER TABLE public.users OWNER TO radar;
++
+ --
+ -- Name: variables; Type: TABLE; Schema: public; Owner: radar
+ --
+@@ -2121,7 +2146,7 @@
+     event character varying(36) NOT NULL,
+     "userId" uuid,
+     "createdAt" timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP(3) NOT NULL,
+-    CONSTRAINT "CHK_workflow_publish_history_event" CHECK (((event)::text = ANY (ARRAY[('activated'::character varying)::text, ('deactivated'::character varying)::text])))
++    CONSTRAINT "CHK_workflow_publish_history_event" CHECK (((event)::text = ANY ((ARRAY['activated'::character varying, 'deactivated'::character varying])::text[])))
+ );
+ 
+ 
+@@ -2266,7 +2291,7 @@
+ -- Name: jobs id; Type: DEFAULT; Schema: public; Owner: radar
+ --
+ 
+-ALTER TABLE ONLY public.jobs ALTER COLUMN id SET DEFAULT nextval('public.opportunities_id_seq'::regclass);
++ALTER TABLE ONLY public.jobs ALTER COLUMN id SET DEFAULT nextval('public.jobs_id_seq'::regclass);
+ 
+ 
+ --
+@@ -2843,11 +2868,19 @@
+ 
+ 
+ --
+--- Name: alembic_version alembic_version_pkc; Type: CONSTRAINT; Schema: public; Owner: radar
++-- Name: api_keys api_keys_key_hash_key; Type: CONSTRAINT; Schema: public; Owner: radar
++--
++
++ALTER TABLE ONLY public.api_keys
++    ADD CONSTRAINT api_keys_key_hash_key UNIQUE (key_hash);
++
++
+ --
++-- Name: api_keys api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: radar
++--
+ 
+-ALTER TABLE ONLY public.alembic_version
+-    ADD CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num);
++ALTER TABLE ONLY public.api_keys
++    ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
+ 
+ 
+ --
+@@ -2931,19 +2964,19 @@
+ 
+ 
+ --
+--- Name: jobs opportunities_job_hash_key; Type: CONSTRAINT; Schema: public; Owner: radar
++-- Name: jobs jobs_job_hash_key; Type: CONSTRAINT; Schema: public; Owner: radar
+ --
+ 
+ ALTER TABLE ONLY public.jobs
+-    ADD CONSTRAINT opportunities_job_hash_key UNIQUE (job_hash);
++    ADD CONSTRAINT jobs_job_hash_key UNIQUE (job_hash);
+ 
+ 
+ --
+--- Name: jobs opportunities_pkey; Type: CONSTRAINT; Schema: public; Owner: radar
++-- Name: jobs jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: radar
+ --
+ 
+ ALTER TABLE ONLY public.jobs
+-    ADD CONSTRAINT opportunities_pkey PRIMARY KEY (id);
++    ADD CONSTRAINT jobs_pkey PRIMARY KEY (id);
+ 
+ 
+ --
+@@ -2979,6 +3012,22 @@
+ 
+ 
+ --
++-- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: radar
++--
++
++ALTER TABLE ONLY public.users
++    ADD CONSTRAINT users_email_key UNIQUE (email);
++
++
++--
++-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: radar
++--
++
++ALTER TABLE ONLY public.users
++    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
++
++
++--
+ -- Name: variables variables_pkey; Type: CONSTRAINT; Schema: public; Owner: radar
+ --
+ 
+@@ -3367,6 +3416,20 @@
+ 
+ 
+ --
++-- Name: idx_api_keys_key_hash; Type: INDEX; Schema: public; Owner: radar
++--
++
++CREATE INDEX idx_api_keys_key_hash ON public.api_keys USING btree (key_hash);
++
++
++--
++-- Name: idx_api_keys_user_id; Type: INDEX; Schema: public; Owner: radar
++--
++
++CREATE INDEX idx_api_keys_user_id ON public.api_keys USING btree (user_id);
++
++
++--
+ -- Name: idx_applications_job_id; Type: INDEX; Schema: public; Owner: radar
+ --
+ 
+@@ -3395,6 +3458,13 @@
+ 
+ 
+ --
++-- Name: idx_applications_user_stage; Type: INDEX; Schema: public; Owner: radar
++--
++
++CREATE INDEX idx_applications_user_stage ON public.applications USING btree (user_id, stage) WHERE (user_id IS NOT NULL);
++
++
++--
+ -- Name: idx_device_tokens_token; Type: INDEX; Schema: public; Owner: radar
+ --
+ 
+@@ -3402,6 +3472,13 @@
+ 
+ 
+ --
++-- Name: idx_device_tokens_user_id; Type: INDEX; Schema: public; Owner: radar
++--
++
++CREATE INDEX idx_device_tokens_user_id ON public.device_tokens USING btree (user_id) WHERE (user_id IS NOT NULL);
++
++
++--
+ -- Name: idx_execution_entity_stopped_at_status_deleted_at; Type: INDEX; Schema: public; Owner: radar
+ --
+ 
+@@ -3465,6 +3542,13 @@
+ 
+ 
+ --
++-- Name: idx_users_plan; Type: INDEX; Schema: public; Owner: radar
++--
++
++CREATE INDEX idx_users_plan ON public.users USING btree (plan);
++
++
++--
+ -- Name: idx_workflows_tags_workflow_id; Type: INDEX; Schema: public; Owner: radar
+ --
+ 
+@@ -3528,13 +3612,27 @@
+ 
+ 
+ --
+--- Name: jobs trg_set_updated_at; Type: TRIGGER; Schema: public; Owner: radar
++-- Name: jobs trg_jobs_updated_at; Type: TRIGGER; Schema: public; Owner: radar
+ --
+ 
+-CREATE TRIGGER trg_set_updated_at BEFORE UPDATE ON public.jobs FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
++CREATE TRIGGER trg_jobs_updated_at BEFORE UPDATE ON public.jobs FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
++
++
++--
++-- Name: applications trg_sync_application_to_opportunity; Type: TRIGGER; Schema: public; Owner: radar
++--
+ 
++CREATE TRIGGER trg_sync_application_to_opportunity AFTER INSERT OR UPDATE OF stage ON public.applications FOR EACH ROW EXECUTE FUNCTION public.sync_application_to_opportunity();
+ 
++
+ --
++-- Name: users trg_users_updated_at; Type: TRIGGER; Schema: public; Owner: radar
++--
++
++CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
++
++
++--
+ -- Name: applications update_applications_updated_at; Type: TRIGGER; Schema: public; Owner: radar
+ --
+ 
+@@ -4211,7 +4309,15 @@
+     ADD CONSTRAINT "FK_scope" FOREIGN KEY ("scopeSlug") REFERENCES public.scope(slug) ON UPDATE CASCADE ON DELETE CASCADE;
+ 
+ 
++--
++-- Name: api_keys api_keys_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: radar
+ --
++
++ALTER TABLE ONLY public.api_keys
++    ADD CONSTRAINT api_keys_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
++
++
++--
+ -- Name: applications applications_job_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: radar
+ --
+ 
+@@ -4220,6 +4326,14 @@
+ 
+ 
+ --
++-- Name: applications applications_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: radar
++--
++
++ALTER TABLE ONLY public.applications
++    ADD CONSTRAINT applications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
++
++
++--
+ -- Name: auth_identity auth_identity_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: radar
+ --
+ 
+@@ -4236,6 +4350,14 @@
+ 
+ 
+ --
++-- Name: device_tokens device_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: radar
++--
++
++ALTER TABLE ONLY public.device_tokens
++    ADD CONSTRAINT device_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
++
++
++--
+ -- Name: execution_data execution_data_fk; Type: FK CONSTRAINT; Schema: public; Owner: radar
+ --
+ 
+@@ -4295,5 +4417,5 @@
+ -- PostgreSQL database dump complete
+ --
+ 
+-\unrestrict 2Y1Wy1OItATggmoE8aN6WOnVfXScXBJcB5Y5mLkZVL173mPcfZ0pxA4iP50u9Z6
++\unrestrict dr3yQPcVBzpXjHV0gxM1yCLUFqr3fAdtcvKK8fGGDgbreBVNCQYgsRgs8wo9U3j
+ 

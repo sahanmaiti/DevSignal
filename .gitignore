@@ -1,3 +1,6 @@
+*.pem
+*.p8
+
 # Virtual environment — never commit this
 venv/
 .venv/

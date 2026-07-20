@@ -39,9 +39,9 @@ services:
     # Environment variables passed into the container at startup.
     # Postgres reads these to create the initial database and user.
     environment:
-      POSTGRES_DB:       devsignal     # name of the database to create
-      POSTGRES_USER:     radar        # username your Python code logs in as
-      POSTGRES_PASSWORD: radar_pass    # password — change this if deploying publicly
+      POSTGRES_DB: devsignal # name of the database to create
+      POSTGRES_USER: radar # username your Python code logs in as
+      POSTGRES_PASSWORD: radar_pass # password — change this if deploying publicly
 
     # Port mapping: "HOST:CONTAINER"
     # Left side (5432) = port on your Mac
@@ -64,7 +64,7 @@ services:
     # The container is marked "healthy" only when this succeeds.
     # n8n waits for this before starting (see depends_on below).
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U radar -d devsignal"]
+      test: [ "CMD-SHELL", "pg_isready -U radar -d devsignal" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -81,16 +81,15 @@ services:
     restart: unless-stopped
 
     extra_hosts:
-    - "host.docker.internal:host-gateway"
-
-    # Don't start n8n until Postgres is confirmed healthy.
-    # Without this, n8n might try to connect before Postgres is ready.
+      - "host.docker.internal:host-gateway"
+      # Don't start n8n until Postgres is confirmed healthy.
+      # Without this, n8n might try to connect before Postgres is ready.
     depends_on:
       postgres:
         condition: service_healthy
 
     ports:
-      - "5678:5678"       # n8n web UI → open http://localhost:5678
+      - "5678:5678" # n8n web UI → open http://localhost:5678
 
     environment:
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
@@ -112,7 +111,6 @@ services:
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
 
-
     volumes:
       # n8n's own config and workflow storage
       - n8n_data:/home/node/.n8n
@@ -123,12 +121,31 @@ services:
 
     working_dir: /app
 
-# ────────────────────────────────────────────────────────────────────────
-# NAMED VOLUMES
-# Docker manages these directories on your Mac.
-# They persist across container restarts and deletions.
-# To find where they live: docker volume inspect devsignal_postgres_data
-# ────────────────────────────────────────────────────────────────────────
+  # ────────────────────────────────────────────────────────────────────────
+  # NAMED VOLUMES
+  # Docker manages these directories on your Mac.
+  # They persist across container restarts and deletions.
+  # To find where they live: docker volume inspect devsignal_postgres_data
+  # ────────────────────────────────────────────────────────────────────────
+  # ────────────────────────────────────────────────────────────────────────
+  # SERVICE 3: Redis
+  # Backs the ARQ job queue (api/worker.py) and the /stats cache (storage/cache.py).
+  # ────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: devsignal_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
-  postgres_data:    # Stores all PostgreSQL data files
-  n8n_data:         # Stores n8n workflows and credentials
+  postgres_data: # Stores all PostgreSQL data files
+  n8n_data: # Stores n8n workflows and credentials
+  redis_data: # Stores Redis RDB snapshots
