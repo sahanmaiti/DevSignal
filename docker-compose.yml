@@ -122,12 +122,6 @@ services:
     working_dir: /app
 
   # ────────────────────────────────────────────────────────────────────────
-  # NAMED VOLUMES
-  # Docker manages these directories on your Mac.
-  # They persist across container restarts and deletions.
-  # To find where they live: docker volume inspect devsignal_postgres_data
-  # ────────────────────────────────────────────────────────────────────────
-  # ────────────────────────────────────────────────────────────────────────
   # SERVICE 3: Redis
   # Backs the ARQ job queue (api/worker.py) and the /stats cache (storage/cache.py).
   # ────────────────────────────────────────────────────────────────────────
@@ -144,6 +138,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ────────────────────────────────────────────────────────────────────────
+  # NAMED VOLUMES
+  # Docker manages these directories on your Mac.
+  # They persist across container restarts and deletions.
+  # To find where they live: docker volume inspect devsignal_postgres_data
+  # ────────────────────────────────────────────────────────────────────────
 
 volumes:
   postgres_data: # Stores all PostgreSQL data files
