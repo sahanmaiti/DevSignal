@@ -51,3 +51,19 @@ Alembic is the designated **going-forward** migration mechanism. This means:
   use `IF NOT EXISTS`) but should not be treated as part of the setup flow.
 - Any new column/table/trigger: add it to `storage/schema.sql` for now, and
   flag Alembic migration work in the next Phase 1 session.
+
+## Known behavior: JWT_SECRET fallback
+
+`config/settings.py` currently does:
+```python
+JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))
+```
+If `JWT_SECRET` is not set in `.env`, a random secret is generated fresh on
+every process start. This means:
+- Fine for local single-session dev/testing.
+- **Breaking** for anything long-running: every restart invalidates all
+  previously issued JWTs, logging every user out.
+- Flagged for Phase 3 (per roadmap's "non-persistent JWT secret fallback"
+  stability fix) to either require the env var (matching the
+  `PIPELINE_API_KEY` pattern, which already raises `RuntimeError` if unset)
+  or persist a generated secret to disk/DB on first run.
