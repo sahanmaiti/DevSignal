@@ -49,7 +49,6 @@ build/
 .streamlit/secrets.toml
 
 # Playwright debug output
-wellfound_debug.htmlbackup_before_arch_fixes.sql
 wellfound_debug.html
 backup_before_arch_fixes.sql
 iOS/DevSignal/DevSignal.xcodeproj/project.xcworkspace/xcuserdata/sahan.xcuserdatad/UserInterfaceState.xcuserstate
