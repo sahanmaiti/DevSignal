@@ -52,7 +52,6 @@ build/
 wellfound_debug.html
 backup_before_arch_fixes.sql
 iOS/DevSignal/DevSignal.xcodeproj/project.xcworkspace/xcuserdata/sahan.xcuserdatad/UserInterfaceState.xcuserstate
-iOS/DevSignal/DevSignal.xcodeproj/project.pbxproj
 
 # pg_dump / schema comparison debug artifacts — never commit these
 devsignal_schema.sql
@@ -60,4 +59,4 @@ devsignal_test_schema.sql
 schema_diff.diff
 *_schema.sql
 !storage/schema.sql
-!docker/initdb/*.sql
+**/xcuserdata/
