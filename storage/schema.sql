@@ -5,8 +5,9 @@
 --   Safe to re-run — every statement uses IF NOT EXISTS / OR REPLACE.
 --
 -- TABLE NAMING (ARCH-5):
---   The main table is `jobs`. A view named `opportunities` is created
---   immediately after for backward compatibility with legacy code.
+-- Main schema for DevSignal.
+-- The primary table is `jobs`.
+-- All application code should reference `jobs` directly.
 --
 -- PLACEMENT: storage/schema.sql
 
@@ -89,14 +90,6 @@ CREATE TABLE IF NOT EXISTS jobs (
 
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
-
-
--- ═══════════════════════════════════════════════════════════════════════
--- VIEW: opportunities (backward compatibility)
--- ═══════════════════════════════════════════════════════════════════════
-
-CREATE OR REPLACE VIEW opportunities AS
-SELECT * FROM jobs;
 
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -338,7 +331,7 @@ CREATE TRIGGER update_device_tokens_updated_at
 -- TRIGGER: sync applications.stage → jobs
 -- ═══════════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE FUNCTION sync_application_to_opportunity()
+CREATE OR REPLACE FUNCTION sync_application_to_jobs()
 RETURNS TRIGGER AS $$
 DECLARE
     v_response_status  TEXT;
@@ -381,15 +374,15 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-DROP TRIGGER IF EXISTS trg_sync_application_to_opportunity
+DROP TRIGGER IF EXISTS trg_sync_application_to_jobs
 ON applications;
 
 
-CREATE TRIGGER trg_sync_application_to_opportunity
+CREATE TRIGGER trg_sync_application_to_jobs
     AFTER INSERT OR UPDATE OF stage
     ON applications
     FOR EACH ROW
-    EXECUTE FUNCTION sync_application_to_opportunity();
+    EXECUTE FUNCTION sync_application_to_jobs();
 
 
 -- ═══════════════════════════════════════════════════════════════════════

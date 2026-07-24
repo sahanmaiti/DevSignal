@@ -11,16 +11,11 @@
 [![SwiftUI](https://img.shields.io/badge/SwiftUI-5.0-006EFF?style=flat-square&logo=swift&logoColor=white)](https://developer.apple.com/xcode/swiftui/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=flat-square&logo=postgresql&logoColor=white)](https://postgresql.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.35-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
 [![n8n](https://img.shields.io/badge/n8n-Automation-EA4B71?style=flat-square)](https://n8n.io)
 [![Groq](https://img.shields.io/badge/Groq-Llama_3.1-F55036?style=flat-square)](https://groq.com)
 [![Tests](https://img.shields.io/badge/Tests-65_passing-22c55e?style=flat-square)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
-
-<br>
-
-[![Live Dashboard](https://img.shields.io/badge/Live_Dashboard-devsignal--sahanmaiti.streamlit.app-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://devsignal-bysahanmaiti.streamlit.app)
 
 <br>
 
@@ -101,9 +96,6 @@ n8n fires on a 12-hour schedule and calls a local FastAPI webhook at `/run-pipel
 **Native iOS App (SwiftUI)**
 A full 5-tab iOS app that consumes the FastAPI layer. Credentials stored securely in the iOS Keychain. Runs entirely offline for returning users using SwiftData caching. See [iOS App](#ios-app) section for full details.
 
-**Live Analytics Dashboard**
-Four-page Streamlit dashboard deployed to Streamlit Cloud at **[devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)**. Reads directly from Neon PostgreSQL in production. Shows KPI cards, score distribution histogram, application funnel, outreach messages, pipeline health, and run history.
-
 **Zero-Cost Architecture**
 Every service runs on a free tier. Monthly operational cost: **$0**.
 
@@ -149,18 +141,11 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
              │  + device_tokens tables        │
              └──────┬──────────────┬──────────┘
                     │              │
-         ┌──────────▼────┐  ┌──────▼──────────┐
-         │  Telegram Bot │  │  Neon PostgreSQL│
-         │  digest alerts│  │  (production)   │
-         └───────────────┘  └──────┬──────────┘
-                                   │
-                    ┌──────────────┴───────────────┐
-                    │                              │
-           ┌────────▼────────┐          ┌──────────▼───────────┐
-           │    Streamlit    │          │   iOS App (SwiftUI)  │
-           │    Dashboard    │          │   5 tabs, Keychain   │
-           │  (public URL)   │          │   auth, offline cache│
-           └─────────────────┘          └──────────────────────┘
+         ┌──────────▼────┐  ┌──────▼───────────┐
+         │  Telegram Bot │  │ iOS App (SwiftUI)│
+         │  digest alerts│  │ 5 tabs, Keychain │
+         └───────────────┘  │ auth, offline    │
+                            └──────────────────┘
 ```
 
 ---
@@ -441,11 +426,6 @@ devsignal/
 ├── notifications/
 │   └── telegram_bot.py
 │
-├── dashboard/                   # Streamlit web dashboard
-│   ├── app.py
-│   ├── db.py
-│   └── pages/
-│
 ├── tests/                       # 65 unit tests
 │   ├── test_scrapers.py
 │   ├── test_processors.py
@@ -462,11 +442,8 @@ devsignal/
 ├── run_enricher.py
 ├── run_pipeline.sh
 ├── run_watchlist.py
-├── db_sync.py
-├── streamlit_app.py
 ├── docker-compose.yml
 ├── requirements.txt
-├── requirements_dashboard.txt
 ├── .env.example
 └── README.md
 ```
@@ -512,8 +489,8 @@ When n8n's newer versions removed the `Execute Command` node, the system was red
 - [x] **AI scoring** — 8-factor Groq/Llama 3.1 scoring with JSON breakdown
 - [x] **Recruiter enrichment** — Hunter.io + Serper + 4-layer fallback
 - [x] **Outreach generation** — Personalized LinkedIn messages for jobs scoring ≥45
-- [x] **Public web dashboard** — Live at [devsignal-sahanmaiti.streamlit.app](https://devsignal-bysahanmaiti.streamlit.app)
-- [x] **Neon production database** — Dashboard reads directly from cloud Postgres
+- [ ] **Public web dashboard** — *Retired in Phase 1*
+- [ ] **Neon production database** — *Retired in Phase 1*
 - [x] **FastAPI REST layer** — 10 endpoints, API key middleware, pagination
 - [x] **Native iOS app** — SwiftUI, 5 tabs, Keychain auth, offline cache
 - [x] **iOS Kanban tracker** — Optimistic updates, 6 stages, notes editor

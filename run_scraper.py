@@ -43,7 +43,6 @@ from notifications.telegram_bot import (
 from config.settings import (
     SERPER_API_KEY,
     ADZUNA_APP_ID,
-    NEON_DATABASE_URL,
 )
 
 
@@ -227,30 +226,6 @@ def main():
                 print(f"  ... and {len(new_jobs) - 20} more")
 
             print()
-
-        # ── Sync to Neon for public dashboard ───────────────────────────
-        if NEON_DATABASE_URL and new_jobs:
-            print("\n[Sync] Pushing new jobs to Neon cloud dashboard...")
-
-            try:
-                result = subprocess.run(
-                    [sys.executable, "db_sync.py", "--limit", "100"],
-                    cwd=os.path.dirname(os.path.abspath(__file__)),
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                )
-
-                if result.returncode == 0:
-                    print("[Sync] Neon sync complete")
-                else:
-                    print(
-                        f"[Sync] Sync warning: "
-                        f"{result.stderr[:200]}"
-                    )
-
-            except Exception as e:
-                print(f"[Sync] Sync failed (non-fatal): {e}")
 
         # ── DB Totals ───────────────────────────────────────────────────
         stats = db.get_stats()
