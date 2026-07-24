@@ -6,11 +6,7 @@
 #   No other file in the project imports psycopg2 directly.
 #
 # TABLE NAME NOTE (ARCH-5):
-#   The main jobs table is now called `jobs`.
-#   A view named `opportunities` exists for backward compatibility with
-#   Streamlit pages, db_sync.py, and other legacy code.  Those files
-#   can keep saying FROM opportunities and they will work.  New code
-#   written after migration 0001 should say FROM jobs.
+#   The canonical table is `jobs`.  All code should use FROM jobs.
 #
 # PLACEMENT: storage/db_client.py
 
@@ -269,7 +265,7 @@ class DBClient:
     def get_all_opportunities(self, min_score: int = 0,
                             remote_only: bool = False,
                             unapplied_only: bool = False) -> list:
-        """Returns jobs with optional filters. Used by the Streamlit dashboard."""
+        """Returns jobs with optional filters. Used by run_watchlist.py and the API."""
         conditions = []
         params = []
 
@@ -299,7 +295,7 @@ class DBClient:
                 return [dict(row) for row in cur.fetchall()]
 
     def get_stats(self) -> dict:
-        """Returns aggregate statistics for Streamlit dashboard summary cards."""
+        """Returns aggregate statistics for dashboard summary cards."""
         sql = """
             SELECT
                 COUNT(*)                                             AS total_jobs,

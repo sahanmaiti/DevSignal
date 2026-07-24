@@ -67,7 +67,7 @@ APP_ENV = os.getenv("APP_ENV", "development")   # "development" | "production"
 # ─────────────────────────────────────────────────────────────────────────────
 # SEC-1: CORS allowed origins
 #
-# In development every localhost port is allowed so the Streamlit dashboard,
+# In development every localhost port is allowed so the iOS app,
 # React dev server, etc. all work without config changes.
 #
 # In production set ALLOWED_ORIGINS in your .env as a comma-separated list:
@@ -80,10 +80,8 @@ _DEVELOPMENT_ORIGINS = [
     "http://localhost",
     "http://localhost:3000",
     "http://localhost:5173",   # Vite
-    "http://localhost:8501",   # Streamlit
     "http://localhost:8000",
     "http://127.0.0.1:8000",
-    "http://127.0.0.1:8501",
 ]
 
 if APP_ENV == "production":

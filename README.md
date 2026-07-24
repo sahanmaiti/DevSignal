@@ -19,7 +19,7 @@
 
 <br>
 
-> *Built by a CS student who got tired of manually refreshing LinkedIn.*
+> _Built by a CS student who got tired of manually refreshing LinkedIn._
 
 </div>
 
@@ -40,19 +40,19 @@ Searching for iOS internships is repetitive, noisy, and punishingly manual. For 
 
 ## What It Does
 
-| Stage | What happens |
-|---|---|
-| **Discovery** | Scrapes 13 job platforms simultaneously for iOS/Swift roles |
-| **Parsing** | Extracts structured fields (experience, salary, remote, visa) from raw descriptions |
-| **Filtering** | Drops senior roles, non-iOS positions, and anything requiring 3+ years |
-| **Deduplication** | MD5 hash fingerprinting — the same job never appears twice, across any number of runs |
-| **Classification** | Determines whether the company actually builds a native iOS product |
-| **AI Scoring** | Scores each job 0–100 across 8 weighted factors using Groq/Llama 3.1 |
-| **Enrichment** | Finds recruiter names, LinkedIn profiles, and email patterns via Hunter.io + Serper for jobs scoring ≥50 |
-| **Outreach** | Generates a personalized recruiter message for every job scoring ≥45 |
-| **Notification** | Telegram digest + iOS push notifications with top opportunities |
-| **Tracking** | Full application lifecycle tracked in Postgres — surfaced in the iOS Kanban board |
-| **iOS App** | Native SwiftUI app: browse jobs, copy outreach, track applications, view analytics |
+| Stage              | What happens                                                                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| **Discovery**      | Scrapes 13 job platforms simultaneously for iOS/Swift roles                                              |
+| **Parsing**        | Extracts structured fields (experience, salary, remote, visa) from raw descriptions                      |
+| **Filtering**      | Drops senior roles, non-iOS positions, and anything requiring 3+ years                                   |
+| **Deduplication**  | MD5 hash fingerprinting — the same job never appears twice, across any number of runs                    |
+| **Classification** | Determines whether the company actually builds a native iOS product                                      |
+| **AI Scoring**     | Scores each job 0–100 across 8 weighted factors using Groq/Llama 3.1                                     |
+| **Enrichment**     | Finds recruiter names, LinkedIn profiles, and email patterns via Hunter.io + Serper for jobs scoring ≥50 |
+| **Outreach**       | Generates a personalized recruiter message for every job scoring ≥45                                     |
+| **Notification**   | Telegram digest + iOS push notifications with top opportunities                                          |
+| **Tracking**       | Full application lifecycle tracked in Postgres — surfaced in the iOS Kanban board                        |
+| **iOS App**        | Native SwiftUI app: browse jobs, copy outreach, track applications, view analytics                       |
 
 ---
 
@@ -64,16 +64,16 @@ Monitors RemoteOK, HackerNews "Who is Hiring", YC WorkAtAStartup, Remotive, Arbe
 **8-Factor AI Opportunity Scoring**
 Every job is evaluated by Llama 3.1 8B (via Groq's free inference API) against a structured scoring rubric with explicit point weights:
 
-| Factor | Points | Rationale |
-|---|---|---|
-| Remote available | +20 | Maximises global reach |
-| Visa sponsorship | +15 | Critical for international candidates |
-| Swift/SwiftUI mentioned | +15 | Exact tech stack confirmation |
-| iOS product confirmed | +15 | Real iOS work vs. vague "mobile" |
-| Experience 0–1 years | +10 | Best match for current level |
-| Salary/compensation listed | +10 | Company transparency signal |
-| Funded startup (Seed–Series C) | +10 | Growth and learning potential |
-| Posted within 7 days | +5 | Recency bonus |
+| Factor                         | Points | Rationale                             |
+| ------------------------------ | ------ | ------------------------------------- |
+| Remote available               | +20    | Maximises global reach                |
+| Visa sponsorship               | +15    | Critical for international candidates |
+| Swift/SwiftUI mentioned        | +15    | Exact tech stack confirmation         |
+| iOS product confirmed          | +15    | Real iOS work vs. vague "mobile"      |
+| Experience 0–1 years           | +10    | Best match for current level          |
+| Salary/compensation listed     | +10    | Company transparency signal           |
+| Funded startup (Seed–Series C) | +10    | Growth and learning potential         |
+| Posted within 7 days           | +5     | Recency bonus                         |
 
 The model returns a structured JSON breakdown explaining each factor — not just a number. Fallback rule-based scoring runs if Groq is unavailable.
 
@@ -85,6 +85,7 @@ For jobs scoring ≥45, the system generates a LinkedIn-ready connection message
 
 **3-Layer Recruiter Enrichment**
 Every free-tier resource is spent intentionally:
+
 - **Layer 1** — Extract email addresses directly from job description text. Free, instant, no quota.
 - **Layer 2** — Hunter.io domain search for email patterns and recruiter contacts. 25 searches/month free, reserved for jobs scoring ≥50 only. Results are locally cached in JSON so the same domain is never queried twice.
 - **Layer 3** — Google search via Serper.dev to find LinkedIn profile URLs without ever touching LinkedIn's blocked scraping surface.
@@ -99,15 +100,13 @@ A full 5-tab iOS app that consumes the FastAPI layer. Credentials stored securel
 **Zero-Cost Architecture**
 Every service runs on a free tier. Monthly operational cost: **$0**.
 
-| Service | Free tier | Usage |
-|---|---|---|
-| Groq | 14,400 req/day | Scoring, classification, outreach |
-| Neon | 512 MB Postgres | Production cloud database |
-| Streamlit Cloud | Unlimited public apps | Dashboard hosting |
-| Hunter.io | 25 domain searches/month | Email enrichment |
-| Serper.dev | 2,500 searches on signup | LinkedIn profile finding |
-| Docker | Free | Local Postgres + n8n |
-| Xcode + Simulator | Free | iOS app development |
+| Service           | Free tier                | Usage                             |
+| ----------------- | ------------------------ | --------------------------------- |
+| Groq              | 14,400 req/day           | Scoring, classification, outreach |
+| Hunter.io         | 25 domain searches/month | Email enrichment                  |
+| Serper.dev        | 2,500 searches on signup | LinkedIn profile finding          |
+| Docker            | Free                     | Local Postgres + n8n              |
+| Xcode + Simulator | Free                     | iOS app development               |
 
 ---
 
@@ -137,8 +136,9 @@ Every service runs on a free tier. Monthly operational cost: **$0**.
                              │
              ┌───────────────▼────────────────┐
              │       PostgreSQL 16            │
-             │  opportunities + applications  │
-             │  + device_tokens tables        │
+             │  jobs + applications + users   │
+             │        + api_keys              │
+             │      + device_tokens tables    │
              └──────┬──────────────┬──────────┘
                     │              │
          ┌──────────▼────┐  ┌──────▼───────────┐
@@ -192,13 +192,13 @@ iOS App
 
 ### Screens
 
-| Tab | What it shows |
-|---|---|
-| **Home** | Greeting, real-time KPI cards (total jobs, applied, score ≥70), top 5 picks today |
-| **Discover** | Full paginated job list with score badges, remote/visa pills, filter sheet, pull-to-refresh, infinite scroll. Tap → JobDetailView with score breakdown bars and apply button |
-| **Outreach** | All pre-generated recruiter messages. Expandable cards with recruiter email, LinkedIn link, editable message (300 char counter), copy-to-clipboard with haptic |
-| **Tracker** | Full-height Kanban board (GeometryReader-sized columns). 6 stages: Applied → Waiting → Replied → Interview → Offer → Rejected. Tap card → stage mover grid + notes editor. Optimistic updates with server-confirmed rollback |
-| **Analytics** | Swift Charts bar chart (score distribution), horizontal funnel bars (Total → Applied → Interview), top sources table with avg score, pipeline last run status |
+| Tab           | What it shows                                                                                                                                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Home**      | Greeting, real-time KPI cards (total jobs, applied, score ≥70), top 5 picks today                                                                                                                                            |
+| **Discover**  | Full paginated job list with score badges, remote/visa pills, filter sheet, pull-to-refresh, infinite scroll. Tap → JobDetailView with score breakdown bars and apply button                                                 |
+| **Outreach**  | All pre-generated recruiter messages. Expandable cards with recruiter email, LinkedIn link, editable message (300 char counter), copy-to-clipboard with haptic                                                               |
+| **Tracker**   | Full-height Kanban board (GeometryReader-sized columns). 6 stages: Applied → Waiting → Replied → Interview → Offer → Rejected. Tap card → stage mover grid + notes editor. Optimistic updates with server-confirmed rollback |
+| **Analytics** | Swift Charts bar chart (score distribution), horizontal funnel bars (Total → Applied → Interview), top sources table with avg score, pipeline last run status                                                                |
 
 ### Key Engineering Decisions
 
@@ -221,22 +221,21 @@ Each Kanban column is sized using `GeometryReader` measuring the available scree
 
 ## Tech Stack
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| **iOS App** | SwiftUI 5, Swift 5.9, Swift Charts, Combine | Native iOS client |
-| **iOS Networking** | URLSession async/await, Codable | HTTP client + JSON decoding |
-| **iOS Storage** | iOS Keychain, @AppStorage | Secure credentials + preferences |
-| **Dashboard** | Streamlit 1.35, Plotly | Web analytics UI |
-| **API Server** | FastAPI, Uvicorn | REST API + pipeline webhook |
-| **Scraping** | Python 3.12, requests, BeautifulSoup4, feedparser | Multi-source job collection |
-| **Processing** | re, custom NLP | Field extraction, filtering, deduplication |
-| **AI / LLM** | Groq API (Llama 3.1 8B) | Scoring, classification, outreach |
-| **Database** | PostgreSQL 16, psycopg2, SQLAlchemy | Primary store + Neon cloud DB |
-| **Automation** | n8n (Docker), launchd | 12h scheduler + process management |
-| **Enrichment** | Hunter.io API, Serper.dev API | Recruiter contacts + LinkedIn profiles |
-| **Notifications** | Telegram Bot API | Mobile digest |
-| **Infrastructure** | Docker Compose | Containerised Postgres + n8n |
-| **Testing** | pytest, unittest.mock | 65 unit tests, zero real API calls |
+| Layer              | Technology                                        | Purpose                                    |
+| ------------------ | ------------------------------------------------- | ------------------------------------------ |
+| **iOS App**        | SwiftUI 5, Swift 5.9, Swift Charts, Combine       | Native iOS client                          |
+| **iOS Networking** | URLSession async/await, Codable                   | HTTP client + JSON decoding                |
+| **iOS Storage**    | iOS Keychain, @AppStorage                         | Secure credentials + preferences           |
+| **API Server**     | FastAPI, Uvicorn                                  | REST API + pipeline webhook                |
+| **Scraping**       | Python 3.12, requests, BeautifulSoup4, feedparser | Multi-source job collection                |
+| **Processing**     | re, custom NLP                                    | Field extraction, filtering, deduplication |
+| **AI / LLM**       | Groq API (Llama 3.1 8B)                           | Scoring, classification, outreach          |
+| **Database**       | PostgreSQL 16, psycopg2, SQLAlchemy               | Primary data store                         |
+| **Automation**     | n8n (Docker), launchd                             | 12h scheduler + process management         |
+| **Enrichment**     | Hunter.io API, Serper.dev API                     | Recruiter contacts + LinkedIn profiles     |
+| **Notifications**  | Telegram Bot API                                  | Mobile digest                              |
+| **Infrastructure** | Docker Compose                                    | Containerised Postgres + n8n               |
+| **Testing**        | pytest, unittest.mock                             | 65 unit tests, zero real API calls         |
 
 ---
 
@@ -300,6 +299,7 @@ open ios/DevSignal/DevSignal.xcodeproj
 ```
 
 For a physical device, use your Mac's local IP address instead of `127.0.0.1`:
+
 ```bash
 # Find your Mac's local IP
 ipconfig getifaddr en0
@@ -346,18 +346,18 @@ APP_ENV=development
 
 The FastAPI server (`api/main.py`) exposes 10 REST endpoints, all protected by `X-API-Key` header middleware except `/health`.
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `GET` | `/health` | Server liveness check (public) |
-| `GET` | `/jobs` | Paginated job list with filters |
-| `GET` | `/jobs/{id}` | Single job detail + score breakdown |
-| `GET` | `/jobs/{id}/outreach` | Recruiter message + contact info |
-| `POST` | `/jobs/{id}/apply` | Record an application |
-| `GET` | `/applications` | All tracked applications |
-| `PATCH` | `/applications/{id}` | Update stage or notes |
-| `GET` | `/stats` | Aggregated pipeline analytics |
-| `POST` | `/devices` | Register iOS push notification token |
-| `POST` | `/run-pipeline` | Trigger full scrape pipeline |
+| Method  | Endpoint              | Purpose                              |
+| ------- | --------------------- | ------------------------------------ |
+| `GET`   | `/health`             | Server liveness check (public)       |
+| `GET`   | `/jobs`               | Paginated job list with filters      |
+| `GET`   | `/jobs/{id}`          | Single job detail + score breakdown  |
+| `GET`   | `/jobs/{id}/outreach` | Recruiter message + contact info     |
+| `POST`  | `/jobs/{id}/apply`    | Record an application                |
+| `GET`   | `/applications`       | All tracked applications             |
+| `PATCH` | `/applications/{id}`  | Update stage or notes                |
+| `GET`   | `/stats`              | Aggregated pipeline analytics        |
+| `POST`  | `/devices`            | Register iOS push notification token |
+| `POST`  | `/run-pipeline`       | Trigger full scrape pipeline         |
 
 ---
 
@@ -489,8 +489,8 @@ When n8n's newer versions removed the `Execute Command` node, the system was red
 - [x] **AI scoring** — 8-factor Groq/Llama 3.1 scoring with JSON breakdown
 - [x] **Recruiter enrichment** — Hunter.io + Serper + 4-layer fallback
 - [x] **Outreach generation** — Personalized LinkedIn messages for jobs scoring ≥45
-- [ ] **Public web dashboard** — *Retired in Phase 1*
-- [ ] **Neon production database** — *Retired in Phase 1*
+- [ ] **Public web dashboard** — _Retired in Phase 1_
+- [ ] **Neon production database** — _Retired in Phase 1_
 - [x] **FastAPI REST layer** — 10 endpoints, API key middleware, pagination
 - [x] **Native iOS app** — SwiftUI, 5 tabs, Keychain auth, offline cache
 - [x] **iOS Kanban tracker** — Optimistic updates, 6 stages, notes editor

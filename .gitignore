@@ -45,9 +45,6 @@ dist/
 build/
 *.egg-info/
 
-# Streamlit secrets
-.streamlit/secrets.toml
-
 # Playwright debug output
 wellfound_debug.html
 backup_before_arch_fixes.sql
